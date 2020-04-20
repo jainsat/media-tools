@@ -40,7 +40,6 @@ from threading import Thread, Lock
 import signal
 import urllib2
 import urlparse
-
 import staticmpdparser
 
 CREATE_DIRS = True
@@ -78,7 +77,6 @@ class FileWriter(object):
         with open(path, "wb") as ofh:
             ofh.write(data)
 
-
 def fetch_file(url):
     "Fetch a specific file via http and return as string."
     try:
@@ -92,7 +90,9 @@ def fetch_file(url):
     except urllib2.HTTPError, exc:
         print "ERROR %s for %s" % (exc, url)
         data = exc.read()
-    return data
+    # Return a triplet from here
+    # data, time duration, size
+    return data, end_time - start_time, size
 
 
 class Fetcher(object):
@@ -130,16 +130,33 @@ class Fetcher(object):
                             'id' : rep.id}
                 fetches.append(rep_data)
         self.fetches = fetches
-
+    
     def start_fetch(self, number_segments=-1):
         "Start a fetch."
         for fetch in self.fetches:
             init_url = os.path.join(fetch['base_url'], fetch['init'])
-            data = fetch_file(init_url)
+            # Download the init file first of the lowest bit rate?
+            data, _, _ = fetch_file(init_url)
             self.file_writer.write_file(fetch['init'], data)
             thread = FetchThread("SegmentFetcher_%s" % fetch['id'], fetch, self.file_writer, number_segments, self)
             self.threads.append(thread)
             thread.start()
+
+    def getLowestBitRateId(self):
+        pass
+
+    def start_fetch_abr(self, number_segments=-1, tp=1):
+        # Start initially with the lowest quality
+        # 1. Find the lowest bit rate representation id
+
+        # 2. Download the init segment
+
+        # 3. Re-calculate throughput and measure latency.
+
+        # 5. Loop to fetch all the segments utilising Abr(similar to FetchThread) run.
+        # Call Abr(throughput). It returns the highest quality id that can be fetched.
+        # Now, download the next segment with the given id and re-calculate throughput and latency.
+        # Note - we do not need threads until there are multiple adaptation sets i.e. audio and video separate adaptation sets.
 
 
 class FetchThread(Thread):
@@ -176,7 +193,8 @@ class FetchThread(Thread):
     def fetch_media_segment(self, number):
         "Fetch a media segment given its number."
         media_url = self.make_media_url(number)
-        return fetch_file(media_url)
+        data, _, _ = fetch_file(media_url)
+        return data
 
     def store_segment(self, data, number):
         "Store the segment to file."
@@ -194,10 +212,36 @@ class FetchThread(Thread):
             cur_seg += 1
 
 
+class Abr:
+    def __init__(self, config):
+        pass
+    def get_quality_delay(self, segment_index):
+        raise NotImplementedError
+    def get_first_quality(self):
+        return 0
+    def report_delay(self, delay):
+        pass
+    def report_download(self, metrics, is_replacment):
+        pass
+    def report_seek(self, where):
+        pass
+    def check_abandon(self, progress, buffer_level):
+        return None
+
+    def quality_from_throughput(self, tput):
+        p = manifest.segment_time
+
+        quality = 0
+        while (quality + 1 < len(manifest.bitrates) and
+               latency + p * manifest.bitrates[quality + 1] / tput <= p):
+            quality += 1
+        return quality
+
 def download(mpd_url=None, mpd_str=None, base_url=None, base_dst="", number_segments=-1, verbose=False):
     "Download MPD if url specified and then start downloading segments."
     if mpd_url:
-        mpd_str = fetch_file(mpd_url)
+        # First download the MPD file
+        mpd_str, _, _ = fetch_file(mpd_url)
         base_url, file_name = os.path.split(mpd_url)
         file_writer = FileWriter(base_dst)
         file_writer.write_file(file_name, mpd_str)
@@ -205,9 +249,27 @@ def download(mpd_url=None, mpd_str=None, base_url=None, base_dst="", number_segm
     fetcher = Fetcher(mpd_parser.mpd, base_url, file_writer, verbose)
     if verbose:
         print str(mpd_parser.mpd)
-        print fetcher.fetches
+        print 'fetcher.fetches', fetcher.fetches
     fetcher.start_fetch(number_segments)
 
+
+def downloadViaAbr(mpd_url=None, mpd_str=None, base_url=None, base_dst="", number_segments=-1, verbose=False):
+    "Download MPD first. Then the lowest bitrate init segment. Later depending on throughput and latency, download the highest quality"
+    tp = 0
+    if mpd_url:
+        mpd_str, dur, size = fetch_file(mpd_url)
+        # Calculate throughput
+        tp = size/dur
+        base_url, file_name = os.path.split(mpd_url)
+        file_writer = FileWriter(base_dst)
+        file_writer.write_file(file_name, mpd_str)
+    
+    mpd_parser = staticmpdparser.StaticManifestParser(mpd_str)
+    fetcher = Fetcher(mpd_parser.mpd, base_url, file_writer, verbose)
+    if verbose:
+        print str(mpd_parser.mpd)
+        print 'fetcher.fetches', fetcher.fetches
+    fetcher.start_fetch_abr(number_segments, tp)
 
 def main():
     "Parse command line and start the fetching."
@@ -228,6 +290,7 @@ def main():
     if len(args) >= 2:
         base_dst = args[1]
     download(mpd_url, base_dst=base_dst, number_segments=number_segments, verbose=options.verbose)
+    #downloadViaAbr(mpd_url, base_dst=base_dst, number_segments=number_segments, verbose=options.verbose)
 
 
 if __name__ == "__main__":
