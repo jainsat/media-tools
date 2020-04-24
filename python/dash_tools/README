@@ -1,0 +1,5 @@
+To run the static downloader -
+python staticdownloader.py -v http://127.0.0.1:5000/video/output.mpd
+
+To run the server -
+noder server.js
