@@ -322,7 +322,7 @@ class FetchThread(Thread):
             self.store_segment(data, number)
             cur_seg += 1
 
-def download(mpd_url=None, mpd_str=None, base_url=None, base_dst="", number_segments=-1, verbose=False):
+def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst="", number_segments=-1):
     "Download MPD if url specified and then start downloading segments."
     if mpd_url:
         # First download the MPD file
@@ -331,27 +331,15 @@ def download(mpd_url=None, mpd_str=None, base_url=None, base_dst="", number_segm
         file_writer = FileWriter(base_dst)
         file_writer.write_file(file_name, mpd_str)
     mpd_parser = staticmpdparser.StaticManifestParser(mpd_str)
-    fetcher = Fetcher(mpd_parser.mpd, base_url, file_writer, verbose)
-    if verbose:
+    fetcher = Fetcher(mpd_parser.mpd, base_url, file_writer, options.verbose)
+    if options.verbose:
         print str(mpd_parser.mpd)
         print 'fetcher.fetches', fetcher.fetches
-    fetcher.start_fetch(number_segments)
+    if options.abr:
+        fetcher.start_fetch_abr()
+    else:
+        fetcher.start_fetch(number_segments)
 
-
-def downloadViaAbr(mpd_url=None, mpd_str=None, base_url=None, base_dst="", number_segments=-1, verbose=False):
-    "Download MPD first. Then the lowest bitrate init segment. Later depending on throughput and latency, download the highest quality"
-    if mpd_url:
-        mpd_str, _, _ = fetch_file(mpd_url)
-        base_url, file_name = os.path.split(mpd_url)
-        file_writer = FileWriter(base_dst)
-        file_writer.write_file(file_name, mpd_str)
-    
-    mpd_parser = staticmpdparser.StaticManifestParser(mpd_str)
-    fetcher = Fetcher(mpd_parser.mpd, base_url, file_writer, verbose)
-    if verbose:
-        print str(mpd_parser.mpd)
-        print 'fetcher.fetches', fetcher.fetches
-    fetcher.start_fetch_abr()
 
 def main():
     "Parse command line and start the fetching."
@@ -372,11 +360,8 @@ def main():
     base_dst = ""
     if len(args) >= 2:
         base_dst = args[1]
-    # Toggle here to use without/with ABR
-    if options.abr:
-        downloadViaAbr(mpd_url, base_dst=base_dst, number_segments=number_segments, verbose=options.verbose)
-    else:
-        download(mpd_url, base_dst=base_dst, number_segments=number_segments, verbose=options.verbose)
+    
+    download(options, mpd_url, base_dst=base_dst, number_segments=number_segments)
 
 
 if __name__ == "__main__":
