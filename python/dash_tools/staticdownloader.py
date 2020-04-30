@@ -361,6 +361,7 @@ def main():
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose")
     parser.add_option("-b", "--base_url", dest="baseURLForced")
     parser.add_option("-n", "--number", dest="numberSegments", type="int")
+    parser.add_option("-a", "--abr", dest="abr", action="store_true")
     (options, args) = parser.parse_args()
     number_segments = -1
     if options.numberSegments:
@@ -372,8 +373,10 @@ def main():
     if len(args) >= 2:
         base_dst = args[1]
     # Toggle here to use without/with ABR
-    #download(mpd_url, base_dst=base_dst, number_segments=number_segments, verbose=options.verbose)
-    downloadViaAbr(mpd_url, base_dst=base_dst, number_segments=number_segments, verbose=options.verbose)
+    if options.abr:
+        downloadViaAbr(mpd_url, base_dst=base_dst, number_segments=number_segments, verbose=options.verbose)
+    else:
+        download(mpd_url, base_dst=base_dst, number_segments=number_segments, verbose=options.verbose)
 
 
 if __name__ == "__main__":
