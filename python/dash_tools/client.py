@@ -133,8 +133,7 @@ class AbrClient:
         quality = 0
         bitrates = self.quality_rep_map.keys()
         bitrates.sort()
-
-        while (quality + 1 < len(bitrates) and bitrates[quality + 1] <= tput):
+        while (quality + 1 < len(bitrates) and ((segment_time * bitrates[quality + 1])/tput) <= segment_time):
             #latency + p * manifest.bitrates[quality + 1] / tput <= p):
             quality += 1
         return bitrates[quality]
