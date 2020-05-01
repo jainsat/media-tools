@@ -1,45 +1,11 @@
 #!/usr/bin/env python
-"""Download and parse live DASH MPD and time download corresponding media segments.
 
-Downloads all representations in the manifest. Only works for manifest with $Number$-template.
-"""
-
-# The copyright in this software is being made available under the BSD License,
-# included below. This software may be subject to other third party and contributor
-# rights, including patent rights, and no such rights are granted under this license.
-#
-# Copyright (c) 2016, Dash Industry Forum.
-# All rights reserved.
-#
-# Redistribution and use in source and binary forms, with or without modification,
-# are permitted provided that the following conditions are met:
-#  * Redistributions of source code must retain the above copyright notice, this
-#  list of conditions and the following disclaimer.
-#  * Redistributions in binary form must reproduce the above copyright notice,
-#  this list of conditions and the following disclaimer in the documentation and/or
-#  other materials provided with the distribution.
-#  * Neither the name of Dash Industry Forum nor the names of its
-#  contributors may be used to endorse or promote products derived from this software
-#  without specific prior written permission.
-#
-#  THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS AS IS AND ANY
-#  EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
-#  WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
-#  IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT,
-#  INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT
-#  NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE, DATA, OR
-#  PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY,
-#  WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE)
-#  ARISING IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE
-#  POSSIBILITY OF SUCH DAMAGE.
-
-import os
 import staticmpdparser
 import common
 from threading import Lock
-
-CREATE_DIRS = True
-import pdb
+import math
+import videoplayer
+import os
 
 
 '''
@@ -96,6 +62,28 @@ class Config:
                 index = i
         return index
 
+
+class Client:
+
+    def download_init_segment(self, config, file_writer):
+        # 1. Find the lowest bit rate representation id
+        lowQualIndex = config.getLowestBitRateIndex()
+
+        # 2. Download the init segment in lowest quality.
+        fetchObj = config.reps[lowQualIndex]
+        init_url = os.path.join(fetchObj['base_url'], fetchObj['init'])
+        print 'Using bitrate ', config.reps[lowQualIndex]['bandwidth'], ' for initial segment'
+        data, duration, size = common.fetch_file(init_url)
+        file_writer.write_file(fetchObj['init'], data)
+        return duration, size
+
+    def download_video_segment(self, config, fetcher, number):
+        # Download in lowest quality.
+        lowQualIndex = config.getLowestBitRateIndex()
+        return fetcher.fetch(config.reps[lowQualIndex], number)
+
+
+
 '''
 Download all the representations.
 '''
@@ -113,11 +101,14 @@ class SimpleClient:
             thread = common.FetchThread("SegmentFetcher_%s" % rep['id'], rep, self.file_writer)
             thread.start()
 
+
+
+
 '''
 Abr class implements a basic ABR algo. init needs config which is of type Config
 quality_from_throughput is called with last observed tput value.
 '''
-class AbrClient:
+class AbrClient(Client):
     def __init__(self, mpd, base_url, base_dst):
         # config can be the mpd file
         self.config = Config(mpd, base_url);
@@ -133,26 +124,17 @@ class AbrClient:
         quality = 0
         bitrates = self.quality_rep_map.keys()
         bitrates.sort()
-        while (quality + 1 < len(bitrates) and ((segment_time * bitrates[quality + 1])/tput) <= segment_time):
-            #latency + p * manifest.bitrates[quality + 1] / tput <= p):
+        while (quality + 1 < len(bitrates) and \
+            ((segment_time * bitrates[quality + 1])/tput) <= segment_time):
             quality += 1
         return bitrates[quality]
 
     def download(self):
         throughput = 0
 
-        # Start initially with the lowest quality
-        # 1. Find the lowest bit rate representation id
-        lowQualIndex = self.config.getLowestBitRateIndex()
+        duration, size = self.download_init_segment(self.config, self.file_writer)
 
-        # 2. Download the init segment in lowest quality.
-        fetchObj = self.config.reps[lowQualIndex]
-        init_url = os.path.join(fetchObj['base_url'], fetchObj['init'])
-        data, duration, size = common.fetch_file(init_url)
-        print 'Using bitrate ', self.config.reps[lowQualIndex]['bandwidth'], ' for initial segment'
-        self.file_writer.write_file(fetchObj['init'], data)
-
-        # 3. Re-calculate throughput and measure latency.
+        # Re-calculate throughput and measure latency.
         throughput = size/duration
 
         cur_seg = 0
@@ -173,4 +155,89 @@ class AbrClient:
             # Recalculate throughput
             throughput = size/duration
             cur_seg += 1
+
+
+class BolaClient(Client):
+
+    def __init__(self, mpd, base_url, base_dst, options):
+        self.config = Config(mpd, base_url);
+        self.quality_rep_map = {}
+        self.file_writer = common.FileWriter(base_dst)
+        for rep in self.config.reps:
+            self.quality_rep_map[rep['bandwidth']] = rep
+        self.bitrates = self.quality_rep_map.keys()
+        self.bitrates.sort()
+        utility_offset = -math.log(self.bitrates[0]) # so utilities[0] = 0
+        self.utilities = [math.log(b) + utility_offset for b in self.bitrates]
+        self.verbose = options.verbose
+        self.gp = options.gp
+        self.buffer_size = options.buffer_size
+        #self.abr_osc = config['abr_osc']
+        #self.abr_basic = config['abr_basic']
+        segment_time = self.config.reps[0]['dur_s']
+        self.Vp = (self.buffer_size - segment_time) / (self.utilities[-1] + self.gp)
+        self.player = videoplayer.VideoPlayer(segment_time*1000, self.utilities, self.bitrates)
+        #self.last_seek_index = 0 # TODO
+        #self.last_quality = 0
+
+        if options.verbose:
+            for q in range(len(self.bitrates)):
+                b = self.bitrates[q]
+                u = self.utilities[q]
+                l = self.Vp * (self.gp + u)
+                if q == 0:
+                    print('%d %d' % (q, l))
+                else:
+                    qq = q - 1
+                    bb = self.bitrates[qq]
+                    uu = self.utilities[qq]
+                    ll = self.Vp * (self.gp + (b * uu - bb * u) / (b - bb))
+                    print('%d %d    <- %d %d' % (q, l, qq, ll))
+
+    def quality_from_buffer(self):
+        level = self.player.get_buffer_level()
+        quality = 0
+        score = None
+        for q in range(len(self.bitrates)):
+            s = ((self.Vp * (self.utilities[q] + self.gp) - level) / self.bitrates[q])
+            if score == None or s > score:
+                quality = q
+                score = s
+        return quality
+
+    def download(self):
+        # downlod init segment
+       self.download_init_segment(self.config, self.file_writer)
+       fetcher = common.Fetcher(self.file_writer)
+       duration, size = self.download_video_segment(self.config, fetcher, 1)
+       self.player.total_play_time += duration * 1000
+       if self.verbose:
+           print "Downloaded first segment\n"
+       total_segments = self.config.reps[0]['periodDuration'] / self.config.reps[0]['dur_s']
+       next_seg = 2
+       while next_seg <= total_segments:
+           #if buffer is full
+           if self.player.get_buffer_level() == self.buffer_size:
+               self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
+
+           quality = self.quality_from_buffer()
+           print 'Using bitrate ', quality, 'for segment', next_seg, 'based on throughput ', quality
+
+           duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
+           self.player.deplete_buffer(int(duration * 1000))
+           self.player.buffer_contents += [quality]
+           next_seg += 1
+
+       self.player.deplete_buffer(self.player.get_buffer_level())
+       print("Total play time = %d sec" % (self.player.total_play_time/1000))
+       print('total played utility: %f' % self.player.played_utility)
+       print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
+       print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000))        
+       print('Rebuffer time = %d' % self.player.rebuffer_event_count)        
+
+    
+
+       
+
+
 

@@ -17,6 +17,9 @@ def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
 
     if options.abr:
         client.AbrClient(mpd_parser.mpd, base_url, base_dst).download()
+    elif options.bola:
+        client.BolaClient(mpd_parser.mpd, base_url, base_dst, options).download()
+
     else:
         client.SimpleClient(mpd_parser.mpd, base_url, base_dst).download()
         
@@ -28,8 +31,11 @@ def main():
     usage = "usage: %prog [options] mpdURL [dstDir]"
     parser = OptionParser(usage)
     parser.add_option("-v", "--verbose", action="store_true", dest="verbose")
-    parser.add_option("-b", "--base_url", dest="baseURLForced")
+    parser.add_option("-u", "--base_url", dest="baseURLForced")
     parser.add_option("-a", "--abr", dest="abr", action="store_true")
+    parser.add_option("-b", "--bola", dest="bola", action="store_true")
+    parser.add_option("-g", "--gp", dest="gp", type="float")
+    parser.add_option("-s", "--buffer_size", dest="buffer_size", type="int")
     (options, args) = parser.parse_args()
     if len(args) < 2:
         parser.error("incorrect number of arguments")
