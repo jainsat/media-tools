@@ -1,3 +1,5 @@
+import math
+
 class VideoPlayer:
     def __init__(self, segment_time, utilities, bitrates):
         self.segment_time = segment_time
@@ -11,7 +13,7 @@ class VideoPlayer:
         self.played_bitrate = 0
         self.last_played = None
         self.total_bitrate_change = 0
-        self.log_bitreate_change = 0
+        self.total_log_bitrate_change = 0
         self.rebuffer_event_count = 0
     
     def get_buffer_level(self):
@@ -47,15 +49,16 @@ class VideoPlayer:
             if quality != self.last_played and self.last_played != None:
                 self.total_bitrate_change += abs(self.bitrates[quality] -
                                               self.bitrates[self.last_played])
-                self.total_log_bitrate_change += abs(math.log(self.bitrates[quality] /
-                                                     self.bitrates[self.last_played]))
-                self.last_played = quality
+                #self.total_log_bitrate_change += abs(math.log(self.bitrates[quality] /
+                #                                                     self.bitrates[self.last_played]))
+            self.last_played = quality
 
             if time >= self.segment_time:
                 self.buffer_contents.pop(0)
                 self.total_play_time += self.segment_time
                 time -= self.segment_time
             else:
+                # Play only when we have a complete segment in our buffer
                 self.buffer_fcc = time
                 self.total_play_time += time
                 time = 0

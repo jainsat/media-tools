@@ -16,11 +16,13 @@ def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
         print str(mpd_parser.mpd)
 
     if options.abr:
+        print("Starting ABR client")
         client.AbrClient(mpd_parser.mpd, base_url, base_dst).download()
     elif options.bola:
+        print("Starting BOLA client")
         client.BolaClient(mpd_parser.mpd, base_url, base_dst, options).download()
-
     else:
+        print("Starting Simple client")
         client.SimpleClient(mpd_parser.mpd, base_url, base_dst).download()
         
 
@@ -38,6 +40,7 @@ def main():
     parser.add_option("-s", "--buffer_size", dest="buffer_size", type="int")
     (options, args) = parser.parse_args()
     if len(args) < 2:
+        print(args)
         parser.error("incorrect number of arguments")
     mpd_url = args[0]
     base_dst = ""
