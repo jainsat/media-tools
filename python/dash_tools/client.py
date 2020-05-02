@@ -121,20 +121,18 @@ class AbrClient(Client):
         self.buffer_size = options.buffer_size * 1000
         self.verbose = options.verbose
         # Segment time is in ms
-        segment_time = self.config.reps[0]['dur_s']*1000
-        self.player = videoplayer.VideoPlayer(segment_time, self.utilities, self.bitrates)
-
+        self.segment_time = self.config.reps[0]['dur_s']*1000
+        self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
 
     def quality_from_throughput(self, tput):
         # in seconds
         segment_time = self.config.reps[0]['dur_s']
         quality = 0
-        bitrates = self.quality_rep_map.keys()
+        bitrates = self.quality_rep_map.keys() 
         bitrates.sort()
-        while (quality + 1 < len(bitrates) and \
-            ((segment_time * bitrates[quality + 1])/tput) <= segment_time):
+        while (quality + 1 < len(bitrates) and ((segment_time * bitrates[quality + 1])/tput) <= segment_time):
             quality += 1
-        return bitrates[quality]
+        return bitrates[quality], quality
 
     def download(self):
         throughput = 0
@@ -151,8 +149,7 @@ class AbrClient(Client):
         self.player.buffer_contents += [0]
         self.player.total_play_time += duration * 1000
         if self.verbose:
-           print "Downloaded first segment\n"
-
+           print "Downloaded first segment"
       
         total_segments = self.config.reps[0]['periodDuration'] / self.config.reps[0]['dur_s']
         cur_seg = 1
@@ -161,16 +158,18 @@ class AbrClient(Client):
         while cur_seg < total_segments:
             number = startNumber + cur_seg
             #if buffer is full
-            if self.player.get_buffer_level() == self.buffer_size:
+            bufferOverflow = self.player.get_buffer_level() + self.segment_time - self.buffer_size
+            if bufferOverflow > 0:
+               print "Buffer full"
                self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
 
             # Call Abr(throughput). It returns the highest quality id that can be fetched.
-            quality = self.quality_from_throughput(throughput)
-            print 'Using bitrate ', quality, 'for segment', cur_seg, 'based on throughput ', throughput
+            bitrateQuality, quality = self.quality_from_throughput(throughput)
+            print 'Using quality', quality, 'for segment', cur_seg, 'based on throughput ', throughput
 
             # Use the quality as index to fetch the media
             # quality directly corresponds to the index in self.fetches
-            duration, size = fetcher.fetch(self.quality_rep_map[quality], number)
+            duration, size = fetcher.fetch(self.quality_rep_map[bitrateQuality], number)
 
             self.player.deplete_buffer(int(duration * 1000))
             self.player.buffer_contents += [quality]
@@ -205,9 +204,9 @@ class BolaClient(Client):
         #self.abr_basic = config['abr_basic']
 
         # Segment time is in ms
-        segment_time = self.config.reps[0]['dur_s']*1000
-        self.Vp = (self.buffer_size - segment_time) / (self.utilities[-1] + self.gp)
-        self.player = videoplayer.VideoPlayer(segment_time, self.utilities, self.bitrates)
+        self.segment_time = self.config.reps[0]['dur_s']*1000
+        self.Vp = (self.buffer_size - self.segment_time) / (self.utilities[-1] + self.gp)
+        self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
         #self.last_seek_index = 0 # TODO
         #self.last_quality = 0
         if options.verbose:
@@ -251,11 +250,12 @@ class BolaClient(Client):
        next_seg = 2
        while next_seg <= total_segments:
            #if buffer is full
-           if self.player.get_buffer_level() == self.buffer_size:
+           bufferOverflow = self.player.get_buffer_level() + self.segment_time - self.buffer_size
+           if bufferOverflow > 0:
                self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
 
            quality = self.quality_from_buffer()
-           print 'Using bitrate ', quality, 'for segment', next_seg, 'based on quality', quality
+           print 'Using quality', quality, 'for segment', next_seg, 'based on quality', quality
 
            duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
            self.player.deplete_buffer(int(duration * 1000))

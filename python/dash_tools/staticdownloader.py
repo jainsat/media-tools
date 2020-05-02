@@ -36,8 +36,10 @@ def main():
     parser.add_option("-u", "--base_url", dest="baseURLForced")
     parser.add_option("-a", "--abr", dest="abr", action="store_true")
     parser.add_option("-b", "--bola", dest="bola", action="store_true")
-    parser.add_option("-g", "--gp", dest="gp", type="float")
-    parser.add_option("-s", "--buffer_size", dest="buffer_size", type="int")
+    parser.add_option("-g", "--gp", dest="gp", type="float", default=5,
+                      help = 'Specify the (gamma p) product in seconds.')
+    parser.add_option("-s", "--buffer_size", dest="buffer_size", type="int", default=20,
+                      help='Specify the buffer size in seconds')
     (options, args) = parser.parse_args()
     if len(args) < 2:
         print(args)

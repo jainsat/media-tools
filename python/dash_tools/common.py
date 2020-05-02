@@ -24,7 +24,6 @@ def fetch_file(url):
     # data, time duration, size
     return data, end_time - start_time, size
 
-
 class FileWriter(object):
     "File writer that handles standard file system."
 
@@ -57,7 +56,6 @@ class FileWriter(object):
         with open(path, "wb") as ofh:
             ofh.write(data)
 
-
 class FetchThread(Thread):
     "Thread that fetches media segments."
 
@@ -66,7 +64,6 @@ class FetchThread(Thread):
         self.rep = rep
         Thread.__init__(self, name=name)
         #self.parent = fetcher
-
 
     def run(self):
         "Run this thread."
@@ -109,5 +106,3 @@ class Fetcher():
         data, duration, size = self.fetch_media_segment(rep, number)
         self.store_segment(data, rep, number)
         return duration, size
-
-
