@@ -17,7 +17,7 @@ def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
 
     if options.abr:
         print("Starting ABR client")
-        client.AbrClient(mpd_parser.mpd, base_url, base_dst).download()
+        client.AbrClient(mpd_parser.mpd, base_url, base_dst, options).download()
     elif options.bola:
         print("Starting BOLA client")
         client.BolaClient(mpd_parser.mpd, base_url, base_dst, options).download()

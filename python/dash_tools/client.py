@@ -7,6 +7,7 @@ import math
 import videoplayer
 import os
 import pdb
+import sys
 
 '''
 Config defines the configuration that any ABR algo takes before processing.
@@ -90,7 +91,7 @@ Download all the representations.
 class SimpleClient:
     def __init__(self, mpd, base_url, base_dst):
         # config can be the mpd file
-        self.config = Config(mpd, base_url);
+        self.config = Config(mpd, base_url)
         self.file_writer = common.FileWriter(base_dst)
 
     def download(self):
@@ -101,26 +102,32 @@ class SimpleClient:
             thread = common.FetchThread("SegmentFetcher_%s" % rep['id'], rep, self.file_writer)
             thread.start()
 
-
-
-
 '''
 Abr class implements a basic ABR algo. init needs config which is of type Config
 quality_from_throughput is called with last observed tput value.
 '''
 class AbrClient(Client):
-    def __init__(self, mpd, base_url, base_dst):
+    def __init__(self, mpd, base_url, base_dst, options):
         # config can be the mpd file
-        self.config = Config(mpd, base_url);
+        self.config = Config(mpd, base_url)
         self.quality_rep_map = {}
         self.file_writer = common.FileWriter(base_dst)
         for rep in self.config.reps:
             self.quality_rep_map[rep['bandwidth']] = rep
+        self.bitrates = self.quality_rep_map.keys()
+        self.bitrates.sort()
+        utility_offset = -math.log(self.bitrates[0]) # so utilities[0] = 0
+        self.utilities = [math.log(b) + utility_offset for b in self.bitrates]
+        self.buffer_size = options.buffer_size * 1000
+        self.verbose = options.verbose
+        # Segment time is in ms
+        segment_time = self.config.reps[0]['dur_s']*1000
+        self.player = videoplayer.VideoPlayer(segment_time, self.utilities, self.bitrates)
+
 
     def quality_from_throughput(self, tput):
         # in seconds
         segment_time = self.config.reps[0]['dur_s']
-
         quality = 0
         bitrates = self.quality_rep_map.keys()
         bitrates.sort()
@@ -131,19 +138,31 @@ class AbrClient(Client):
 
     def download(self):
         throughput = 0
-
+        # download init segment
         duration, size = self.download_init_segment(self.config, self.file_writer)
+        fetcher = common.Fetcher(self.file_writer)
+        startNumber = self.config.reps[0]['startNr'] 
+        # Download the first segment with lowest quality
+        duration, size = self.download_video_segment(self.config, fetcher, startNumber)
 
         # Re-calculate throughput and measure latency.
         throughput = size/duration
+        # Add the lowest quality to the buffer for first segment
+        self.player.buffer_contents += [0]
+        self.player.total_play_time += duration * 1000
+        if self.verbose:
+           print "Downloaded first segment\n"
 
-        cur_seg = 0
+      
         total_segments = self.config.reps[0]['periodDuration'] / self.config.reps[0]['dur_s']
-        fetcher = common.Fetcher(self.file_writer)
+        cur_seg = 1
         # Using index 0 - ASSUMPTION - all representation set have same duration and same start number
         # Note - we do not need threads until there are multiple adaptation sets i.e. audio and video separate adaptation sets.
         while cur_seg < total_segments:
-            number = self.config.reps[0]['startNr'] + cur_seg
+            number = startNumber + cur_seg
+            #if buffer is full
+            if self.player.get_buffer_level() == self.buffer_size:
+               self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
 
             # Call Abr(throughput). It returns the highest quality id that can be fetched.
             quality = self.quality_from_throughput(throughput)
@@ -152,15 +171,24 @@ class AbrClient(Client):
             # Use the quality as index to fetch the media
             # quality directly corresponds to the index in self.fetches
             duration, size = fetcher.fetch(self.quality_rep_map[quality], number)
+
+            self.player.deplete_buffer(int(duration * 1000))
+            self.player.buffer_contents += [quality]
             # Recalculate throughput
             throughput = size/duration
             cur_seg += 1
 
+        self.player.deplete_buffer(self.player.get_buffer_level())
+        print("Total play time = %d sec" % (self.player.total_play_time/1000))
+        print('Total played utility: %f' % self.player.played_utility)
+        print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
+        print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000))        
+        print('Rebuffer count = %d' % self.player.rebuffer_event_count)
 
 class BolaClient(Client):
 
     def __init__(self, mpd, base_url, base_dst, options):
-        self.config = Config(mpd, base_url);
+        self.config = Config(mpd, base_url)
         self.quality_rep_map = {}
         self.file_writer = common.FileWriter(base_dst)
         for rep in self.config.reps:
@@ -239,11 +267,4 @@ class BolaClient(Client):
        print('total played utility: %f' % self.player.played_utility)
        print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
        print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000))        
-       print('Rebuffer time = %d' % self.player.rebuffer_event_count)        
-
-    
-
-       
-
-
-
+       print('Rebuffer count = %d' % self.player.rebuffer_event_count)
