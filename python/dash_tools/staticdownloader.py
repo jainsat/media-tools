@@ -21,6 +21,9 @@ def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
     elif options.bola:
         print("Starting BOLA client")
         client.BolaClient(mpd_parser.mpd, base_url, base_dst, options).download()
+    elif options.bba:
+        print("Starting BBA client")
+        client.BBAClient(mpd_parser.mpd, base_url, base_dst, options).download()
     else:
         print("Starting Simple client")
         client.SimpleClient(mpd_parser.mpd, base_url, base_dst).download()
@@ -36,6 +39,7 @@ def main():
     parser.add_option("-u", "--base_url", dest="baseURLForced")
     parser.add_option("-a", "--abr", dest="abr", action="store_true")
     parser.add_option("-b", "--bola", dest="bola", action="store_true")
+    parser.add_option("-B", "--bba", dest="bba", action="store_true")
     parser.add_option("-g", "--gp", dest="gp", type="float", default=5,
                       help = 'Specify the (gamma p) product in seconds.')
     parser.add_option("-s", "--buffer_size", dest="buffer_size", type="int", default=20,
