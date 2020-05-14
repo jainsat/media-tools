@@ -3,7 +3,7 @@ import os
 from common import fetch_file
 import staticmpdparser
 import client
-
+import json
 
 def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
     "Download MPD if url specified and then start downloading segments."
@@ -21,9 +21,15 @@ def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
     elif options.bola:
         print("Starting BOLA client")
         client.BolaClient(mpd_parser.mpd, base_url, base_dst, options).download()
-    elif options.bba:
+    elif options.bba0:
+        print("Starting BBA0 client")
+        client.BBAClient(mpd_parser.mpd, base_url, base_dst, options).download_bba0()
+    elif options.bba2:
+        with open('/Users/satya/Spring20/wireless/project/server/static/video/mpd_data.json') as json_file:
+            data = json.load(json_file)
+            segment_sizes = data['segment_size']
         print("Starting BBA client")
-        client.BBAClient(mpd_parser.mpd, base_url, base_dst, options).download()
+        client.BBAClient(mpd_parser.mpd, base_url, base_dst, options, segment_sizes).download_bba2()
     else:
         print("Starting Simple client")
         client.SimpleClient(mpd_parser.mpd, base_url, base_dst).download()
@@ -39,20 +45,15 @@ def main():
     parser.add_option("-u", "--base_url", dest="baseURLForced")
     parser.add_option("-a", "--abr", dest="abr", action="store_true")
     parser.add_option("-b", "--bola", dest="bola", action="store_true")
-    parser.add_option("-B", "--bba", dest="bba", action="store_true")
+    parser.add_option("-B", "--bba0", dest="bba0", action="store_true")
+    parser.add_option("-X", "--bba2", dest="bba2", action="store_true")
     parser.add_option("-g", "--gp", dest="gp", type="float", default=5,
                       help = 'Specify the (gamma p) product in seconds.')
     parser.add_option("-s", "--buffer_size", dest="buffer_size", type="int", default=20,
                       help='Specify the buffer size in seconds')
     (options, args) = parser.parse_args()
-    if len(args) < 2:
-        print(args)
-        parser.error("incorrect number of arguments")
-    mpd_url = args[0]
-    base_dst = ""
-    if len(args) >= 2:
-        base_dst = args[1]
-    
+    mpd_url = "http://localhost:5000/video/output.mpd"
+    base_dst = "download"
     download(options, mpd_url, base_dst=base_dst)
 
 

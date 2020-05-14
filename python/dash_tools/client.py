@@ -10,9 +10,10 @@ import pdb
 import sys
 from collections import OrderedDict
 
-
+NETFLIX_INITIAL_BUFFER = 2
 NETFLIX_RESERVOIR = 0.1
 NETFLIX_CUSHION = 0.9
+NETFLIX_INITIAL_FACTOR = 0.875
 
 '''
 Config defines the configuration that any ABR algo takes before processing.
@@ -26,7 +27,6 @@ class Config:
         self.base_url = base_url
         self.verbose = verbose
         self.reps = None
-        self.video_length = mpd.mediaPresentationDuration
         if mpd.type != "static":
             print "Can only handle static MPDs."
             sys.exit(1)
@@ -128,7 +128,7 @@ class AbrClient(Client):
         self.verbose = options.verbose
         # Segment time is in ms
         self.segment_time = self.config.reps[0]['dur_s']*1000
-        self.player = videoplayer.VideoPlayer(self.segment_time, self.config.video_length, self.utilities, self.bitrates)
+        self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
 
     def quality_from_throughput(self, tput):
         # in seconds
@@ -213,7 +213,7 @@ class BolaClient(Client):
         # Segment time is in ms
         self.segment_time = self.config.reps[0]['dur_s']*1000
         self.Vp = (self.buffer_size - self.segment_time) / (self.utilities[-1] + self.gp)
-        self.player = videoplayer.VideoPlayer(self.segment_time, self.config.video_length, self.utilities, self.bitrates)
+        self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
         #self.last_seek_index = 0 # TODO
         #self.last_quality = 0
         if options.verbose:
@@ -280,7 +280,7 @@ class BolaClient(Client):
 
 class BBAClient(Client):
 
-    def __init__(self, mpd, base_url, base_dst, options):
+    def __init__(self, mpd, base_url, base_dst, options, segment_sizes=None):
         self.config = Config(mpd, base_url)
         self.quality_rep_map = {}
         self.file_writer = common.FileWriter(base_dst)
@@ -292,13 +292,14 @@ class BBAClient(Client):
         self.utilities = [math.log(b) + utility_offset for b in self.bitrates]
         self.verbose = options.verbose
         self.gp = options.gp
+        self.segment_sizes = segment_sizes
         self.rate_map = self.get_rate_map()
         # buffer_size is in ms
         self.buffer_size = options.buffer_size * 1000
 
         # Segment time is in ms
         self.segment_time = self.config.reps[0]['dur_s']*1000
-        self.player = videoplayer.VideoPlayer(self.segment_time, self.config.video_length, self.utilities, self.bitrates)
+        self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
 
     def get_rate_map(self):
         """
@@ -355,8 +356,35 @@ class BBAClient(Client):
                 next_bitrate = self.rate_map[marker]
         return next_bitrate
 
+    def get_quality_bba2(self, average_segment_sizes, segment_download_rate, curr_bitrate, state):
+        available_video_segments = self.player.get_buffer_level()
+        if state == "INITIAL":
+            # if the B increases by more than 0.875V s. Since B = V - ChunkSize/c[k],
+            # B > 0:875V also means that the chunk is downloaded eight times faster than it is played
+            next_bitrate = curr_bitrate
+            # delta-B = V - ChunkSize/c[k]
+            print "curr bit rate = ", curr_bitrate, " download rate = ", segment_download_rate
+            delta_B = (self.segment_time/1000) - average_segment_sizes[curr_bitrate]/segment_download_rate
+            # Select the higher bitrate as long as delta B > 0.875 * V
+            if delta_B > NETFLIX_INITIAL_FACTOR * self.segment_time:
+                next_bitrate = self.bitrates.index(curr_bitrate)+1
+            # if the current buffer occupancy is less that NETFLIX_INITIAL_BUFFER, then do NOY use rate map
+            if not available_video_segments < NETFLIX_INITIAL_BUFFER:
 
-    def download(self):
+                # get the next bitrate based on the ratemap
+                rate_map_next_bitrate = self.get_quality_netflix()
+                # Consider the rate map only if the rate map gives a higher value.
+                # Once the rate mao returns a higher value exit the 'INITIAL' stage
+                if rate_map_next_bitrate > next_bitrate:
+                    next_bitrate = rate_map_next_bitrate
+                    state = "RUNNING"
+        else:
+            next_bitrate = self.get_quality_netflix()
+        return next_bitrate, state
+
+
+
+    def download_bba0(self):
         # download init segment
        self.download_init_segment(self.config, self.file_writer)
        fetcher = common.Fetcher(self.file_writer)
@@ -390,3 +418,69 @@ class BBAClient(Client):
        print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
        print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000))
        print('Rebuffer count = %d' % self.player.rebuffer_event_count)
+
+    def get_average_segment_sizes(self):
+        """
+        Module to get the avearge segment sizes for each bitrate
+        :param dp_object:
+        :return: A dictionary of aveage segment sizes for each bitrate
+        """
+        average_segment_sizes = dict()
+        for quality in range(len(self.bitrates)):
+            segment_sizes = [ sizes[quality] for sizes in self.segment_sizes]
+            segment_sizes = [float(i) for i in segment_sizes]
+            try:
+                average_segment_sizes[quality] = sum(segment_sizes)/len(segment_sizes)
+            except ZeroDivisionError:
+                average_segment_sizes[quality] = 0
+        print "The avearge segment size for is {}".format(average_segment_sizes.items())
+        return average_segment_sizes
+
+
+    def download_bba2(self):
+       # download init segment
+       self.download_init_segment(self.config, self.file_writer)
+       fetcher = common.Fetcher(self.file_writer)
+
+       # get average segment sizes.
+       average_segment_sizes = self.get_average_segment_sizes()
+      
+      
+       # Download the first segment
+       duration, size = self.download_video_segment(self.config, fetcher, 1)
+       # Add the lowest quality to the buffer for first segment
+       self.player.buffer_contents += [0]
+       self.player.total_play_time += duration * 1000
+       
+       segment_size = segment_download_time  = None
+       state = "INITIAL"
+       total_segments = self.config.reps[0]['periodDuration'] / self.config.reps[0]['dur_s']
+       next_seg = 2
+       curr_bitrate = 0
+       segment_download_rate = size / duration
+       while next_seg <= total_segments:
+           #if buffer is full
+           bufferOverflow = self.player.get_buffer_level() + self.segment_time - self.buffer_size
+           if bufferOverflow > 0:
+               print "overflow"
+               self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
+
+           if segment_size and segment_download_time:
+               segment_download_rate = segment_size / segment_download_time
+           
+           curr_bitrate, state = self.get_quality_bba2(average_segment_sizes, segment_download_rate, curr_bitrate, state)
+           quality = curr_bitrate
+           print 'Using quality ', quality, 'for segment ', next_seg, 'based on quality ', quality
+
+           segment_download_time, segment_size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
+           self.player.deplete_buffer(int(segment_download_time * 1000))
+           self.player.buffer_contents += [quality]
+           next_seg += 1
+
+       self.player.deplete_buffer(self.player.get_buffer_level())
+       print("Total play time = %d sec" % (self.player.total_play_time/1000))
+       print('total played utility: %f' % self.player.played_utility)
+       print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
+       print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000))
+       print('Rebuffer count = %d' % self.player.rebuffer_event_count)
+
