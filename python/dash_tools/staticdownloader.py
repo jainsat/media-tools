@@ -25,16 +25,17 @@ def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
         print("Starting BBA0 client")
         client.BBAClient(mpd_parser.mpd, base_url, base_dst, options).download_bba0()
     elif options.bba2:
-        with open('/Users/satya/Spring20/wireless/project/server/static/video/mpd_data.json') as json_file:
+        with open('/home/rksinha_cs_stonybrook_edu/mpd_data.json') as json_file:
             data = json.load(json_file)
             segment_sizes = data['segment_size']
-        print("Starting BBA client")
+        print("Starting BBA2 client")
         client.BBAClient(mpd_parser.mpd, base_url, base_dst, options, segment_sizes).download_bba2()
+    elif options.pensieve:
+        print("Starting Pensieve client")
+        client.PensieveClient(mpd_parser.mpd, base_url, base_dst, options).download_pensieve()
     else:
         print("Starting Simple client")
         client.SimpleClient(mpd_parser.mpd, base_url, base_dst).download()
-        
-
 
 def main():
     "Parse command line and start the fetching."
@@ -47,15 +48,15 @@ def main():
     parser.add_option("-b", "--bola", dest="bola", action="store_true")
     parser.add_option("-B", "--bba0", dest="bba0", action="store_true")
     parser.add_option("-X", "--bba2", dest="bba2", action="store_true")
+    parser.add_option("-p", "--pen", dest="pensieve", action="store_true")
     parser.add_option("-g", "--gp", dest="gp", type="float", default=5,
                       help = 'Specify the (gamma p) product in seconds.')
     parser.add_option("-s", "--buffer_size", dest="buffer_size", type="int", default=20,
                       help='Specify the buffer size in seconds')
     (options, args) = parser.parse_args()
-    mpd_url = "http://localhost:5000/video/output.mpd"
+    mpd_url = "http://10.128.0.33:5000/video/output.mpd"
     base_dst = "download"
     download(options, mpd_url, base_dst=base_dst)
-
 
 if __name__ == "__main__":
     main()

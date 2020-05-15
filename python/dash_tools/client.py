@@ -10,6 +10,31 @@ import pdb
 import sys
 from collections import OrderedDict
 
+import os
+os.environ['CUDA_VISIBLE_DEVICES']=''
+
+import numpy as np
+import tensorflow as tf
+import a3c
+
+## The following parameters are specific to Pensieve ABR
+S_INFO = 6  # bit_rate, buffer_size, rebuffering_time, bandwidth_measurement, chunk_til_video_end
+S_LEN = 8  # take how many frames in the past
+A_DIM = 6
+ACTOR_LR_RATE = 0.0001
+CRITIC_LR_RATE = 0.001
+
+NN_MODEL = './pensieve_pretrained_models/pretrain_linear_reward.ckpt'
+DEFAULT_QUALITY = 0  # default video quality without agent
+M_IN_K = 1000.0
+REBUF_PENALTY = 4.3  # 1 sec rebuffering -> this number of Mbps
+SMOOTH_PENALTY = 1
+RAND_RANGE = 1000
+## TODO - change this
+#VIDEO_BIT_RATE = [300,750,1200,1850,2850,4300]
+BUFFER_NORM_FACTOR = 10.0
+## End of Pensieve parameters
+
 NETFLIX_INITIAL_BUFFER = 2
 NETFLIX_RESERVOIR = 0.1
 NETFLIX_CUSHION = 0.9
@@ -242,7 +267,7 @@ class BolaClient(Client):
         return quality
 
     def download(self):
-        # download init segment
+       # download init segment
        self.download_init_segment(self.config, self.file_writer)
        fetcher = common.Fetcher(self.file_writer)
 
@@ -483,4 +508,185 @@ class BBAClient(Client):
        print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
        print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000))
        print('Rebuffer count = %d' % self.player.rebuffer_event_count)
+
+class PensieveClient(Client):
+    #def __init__(self, config):
+    def __init__(self, mpd, base_url, base_dst, options):
+        self.config = Config(mpd, base_url)
+        self.quality_rep_map = {}
+        self.file_writer = common.FileWriter(base_dst)
+
+        for rep in self.config.reps:
+            self.quality_rep_map[rep['bandwidth']] = rep
+
+        self.bitrates = self.quality_rep_map.keys()
+        self.bitrates.sort()
+        VIDEO_BIT_RATE = self.bitrates
+        utility_offset = -math.log(self.bitrates[0])
+        self.utilities = [math.log(b) + utility_offset for b in self.bitrates]
+        self.buffer_size = options.buffer_size * 1000
+        self.verbose = options.verbose
+        self.segment_time = self.config.reps[0]['dur_s']*1000
+        self.player = videoplayer.VideoPlayer(self.segment_time,
+                self.utilities, self.bitrates)
+
+        self.sess = tf.Session()
+
+        self.actor = a3c.ActorNetwork(self.sess, state_dim=[S_INFO, S_LEN], action_dim=A_DIM, learning_rate=ACTOR_LR_RATE)
+        self.critic = a3c.CriticNetwork(self.sess, state_dim=[S_INFO, S_LEN], learning_rate=CRITIC_LR_RATE)
+
+        self.sess.run(tf.initialize_all_variables())
+        self.saver = tf.train.Saver()
+
+        # restore neural net parameters
+        self.nn_model = NN_MODEL
+        if self.nn_model is not None:  # nn_model is the path to file
+            self.saver.restore(self.sess, self.nn_model)
+            print("Model restored.")
+
+        self.init_action = np.zeros(A_DIM)
+        self.init_action[DEFAULT_QUALITY] = 1
+
+        self.s_batch = [np.zeros((S_INFO, S_LEN))]
+        self.a_batch = [self.init_action]
+        self.r_batch = []
+
+        self.train_counter = 0
+
+        self.last_quality = DEFAULT_QUALITY
+        self.last_bit_rate = DEFAULT_QUALITY
+        self.last_total_rebuf = 0
+        # need this storage, because observation only contains total rebuffering time
+        # we compute the difference to get
+
+        self.video_chunk_count = 0
+        self.chunk_fetch_time = 0
+        self.chunk_size = 0
+        self.rebuffer_time = 0
+
+    def get_chunk_size(self, quality, segment_index):
+        global manifest
+
+        if segment_index+A_DIM <= len(manifest.segments):
+            return manifest.segments[segment_index][quality]
+        else:
+            return 0
+
+    def get_quality_delay(self, segment_index):
+        global manifest
+
+        self.rebuffer_time = float(self.rebuffer_time - self.last_total_rebuf)
+        reward = manifest.bitrates[self.last_quality] / M_IN_K - REBUF_PENALTY * self.rebuffer_time / M_IN_K - SMOOTH_PENALTY * np.abs(manifest.bitrates[self.last_quality] - self.last_bit_rate) / M_IN_K
+
+        self.last_bit_rate = manifest.bitrates[self.last_quality]
+        self.last_total_rebuf = self.rebuffer_time
+
+        # retrieve previous state
+        if len(self.s_batch) == 0:
+            state = [np.zeros((S_INFO, S_LEN))]
+        else:
+            state = np.array(self.s_batch[-1], copy=True)
+
+        # compute bandwidth measurement
+        video_chunk_fetch_time = self.chunk_fetch_time
+        video_chunk_size = self.chunk_size
+
+        # compute number of video chunks left
+        video_chunk_remain = len(manifest.segments) - self.video_chunk_count
+        self.video_chunk_count += 1
+
+        # dequeue history record
+        state = np.roll(state, -1, axis=1)
+
+        next_video_chunk_sizes = []
+        for i in range(A_DIM):
+            next_video_chunk_sizes.append(self.get_chunk_size(i, self.video_chunk_count))
+
+        # this should be S_INFO number of terms
+        try:
+            state[0, -1] = manifest.bitrates[self.last_quality] / float(np.max(manifest.bitrates))
+            state[1, -1] = get_buffer_level() / BUFFER_NORM_FACTOR
+            state[2, -1] = float(video_chunk_size) / float(video_chunk_fetch_time) / M_IN_K  # kilo byte / ms
+            state[3, -1] = float(video_chunk_fetch_time) / M_IN_K / BUFFER_NORM_FACTOR  # 10 sec
+            state[4, :A_DIM] = np.array(next_video_chunk_sizes) / M_IN_K / M_IN_K  # mega byte
+            state[5, -1] = np.minimum(video_chunk_remain, len(manifest.segments)) / float(len(manifest.segments))
+        except ZeroDivisionError:
+            # this should occur VERY rarely (1 out of 3000), should be a dash issue
+            # in this case we ignore the observation and roll back to an eariler one
+            if len(self.s_batch) == 0:
+                state = [np.zeros((S_INFO, S_LEN))]
+            else:
+                state = np.array(self.s_batch[-1], copy=True)
+
+        action_prob = self.actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
+        action_cumsum = np.cumsum(action_prob)
+        bit_rate = (action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+        # Note: we need to discretize the probability into 1/RAND_RANGE steps,
+        # because there is an intrinsic discrepancy in passing single state and batch states
+
+        print("Pensieve", bit_rate, self.video_chunk_count)
+        #quality = np.random.randint(2)#get_quality(str(bit_rate))
+        quality = bit_rate
+
+        # record [state, action, reward]
+        # put it here after training, notice there is a shift in reward storage
+        if self.video_chunk_count >= len(manifest.segments):
+            self.s_batch = [np.zeros((S_INFO, S_LEN))]
+        else:
+            self.s_batch.append(state)
+
+        self.last_quality = quality
+
+        return quality
+
+    def download_pensieve(self):
+        # Download init segment
+        self.download_init_segment(self.config, self.file_writer)
+        fetcher = common.Fetcher(self.file_writer)
+
+        # Download the first segment
+        duration, size = self.download_video_segment(self.config, fetcher, 1)
+
+        # Add the lowest quality to the buffer for first segment
+        self.player.buffer_contents += [0]
+        self.player.total_play_time += duration * 1000
+        if self.verbose:
+            print "Downloaded first segment\n"
+        total_segments = self.config.reps[0]['periodDuration'] / self.config.reps[0]['dur_s']
+
+        next_seg = 2
+        while next_seg <= total_segments:
+            bufferOverflow = self.player.get_buffer_level() + self.segment_time  - self.buffer_size
+            if bufferOverflow > 0:
+                self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
+            # Change here
+            quality = self.get_quality_delay(next_seg)
+            print 'Using quality ', quality, 'for segment ', next_seg
+
+            pdb.set_trace()
+            duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
+
+            self.player.deplete_buffer(int(duration * 1000))
+            self.player.buffer_contents += [quality]
+            next_seg += 1
+
+        self.player.deplete_buffer(self.player.get_buffer_level())
+        print("Total play time = %d sec" % (self.player.total_play_time/1000))
+        print('total played utility: %f' % self.player.played_utility)
+        print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
+        print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000)) 
+        print('Rebuffer count = %d' % self.player.rebuffer_event_count)
+
+    def report_delay(self, delay):
+        pass
+
+    def report_download(self, metrics, is_replacment):
+        global manifest
+
+        self.last_quality = metrics.quality
+        self.chunk_size = metrics.size
+        self.chunk_fetch_time = metrics.time
+
+    def report_seek(self, where):
+        pass
 
