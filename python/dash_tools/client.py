@@ -20,7 +20,7 @@ import a3c
 ## The following parameters are specific to Pensieve ABR
 S_INFO = 6  # bit_rate, buffer_size, rebuffering_time, bandwidth_measurement, chunk_til_video_end
 S_LEN = 8  # take how many frames in the past
-A_DIM = 6
+A_DIM = 5
 ACTOR_LR_RATE = 0.0001
 CRITIC_LR_RATE = 0.001
 
@@ -511,7 +511,7 @@ class BBAClient(Client):
 
 class PensieveClient(Client):
     #def __init__(self, config):
-    def __init__(self, mpd, base_url, base_dst, options):
+    def __init__(self, mpd, base_url, base_dst, options, segment_sizes):
         self.config = Config(mpd, base_url)
         self.quality_rep_map = {}
         self.file_writer = common.FileWriter(base_dst)
@@ -521,11 +521,13 @@ class PensieveClient(Client):
 
         self.bitrates = self.quality_rep_map.keys()
         self.bitrates.sort()
+        print "ritz", self.bitrates, self.quality_rep_map
         VIDEO_BIT_RATE = self.bitrates
         utility_offset = -math.log(self.bitrates[0])
         self.utilities = [math.log(b) + utility_offset for b in self.bitrates]
         self.buffer_size = options.buffer_size * 1000
         self.verbose = options.verbose
+        self.segments = segment_sizes
         self.segment_time = self.config.reps[0]['dur_s']*1000
         self.player = videoplayer.VideoPlayer(self.segment_time,
                 self.utilities, self.bitrates)
@@ -565,20 +567,18 @@ class PensieveClient(Client):
         self.rebuffer_time = 0
 
     def get_chunk_size(self, quality, segment_index):
-        global manifest
-
-        if segment_index+A_DIM <= len(manifest.segments):
-            return manifest.segments[segment_index][quality]
+        #pdb.set_trace()
+        if segment_index+A_DIM <= len(self.segments):
+            print "segment index getting fetched:", segment_index, quality
+            return self.segments[segment_index][quality]
         else:
             return 0
 
     def get_quality_delay(self, segment_index):
-        global manifest
-
         self.rebuffer_time = float(self.rebuffer_time - self.last_total_rebuf)
-        reward = manifest.bitrates[self.last_quality] / M_IN_K - REBUF_PENALTY * self.rebuffer_time / M_IN_K - SMOOTH_PENALTY * np.abs(manifest.bitrates[self.last_quality] - self.last_bit_rate) / M_IN_K
+        reward = self.bitrates[self.last_quality] / M_IN_K - REBUF_PENALTY * self.rebuffer_time / M_IN_K - SMOOTH_PENALTY * np.abs(self.bitrates[self.last_quality] - self.last_bit_rate) / M_IN_K
 
-        self.last_bit_rate = manifest.bitrates[self.last_quality]
+        self.last_bit_rate = self.bitrates[self.last_quality]
         self.last_total_rebuf = self.rebuffer_time
 
         # retrieve previous state
@@ -591,8 +591,10 @@ class PensieveClient(Client):
         video_chunk_fetch_time = self.chunk_fetch_time
         video_chunk_size = self.chunk_size
 
+        total_segments = self.config.reps[0]['periodDuration'] / self.config.reps[0]['dur_s']
+
         # compute number of video chunks left
-        video_chunk_remain = len(manifest.segments) - self.video_chunk_count
+        video_chunk_remain = len(self.segments) - self.video_chunk_count
         self.video_chunk_count += 1
 
         # dequeue history record
@@ -604,12 +606,12 @@ class PensieveClient(Client):
 
         # this should be S_INFO number of terms
         try:
-            state[0, -1] = manifest.bitrates[self.last_quality] / float(np.max(manifest.bitrates))
+            state[0, -1] = self.bitrates[self.last_quality] / float(np.max(self.bitrates))
             state[1, -1] = get_buffer_level() / BUFFER_NORM_FACTOR
             state[2, -1] = float(video_chunk_size) / float(video_chunk_fetch_time) / M_IN_K  # kilo byte / ms
             state[3, -1] = float(video_chunk_fetch_time) / M_IN_K / BUFFER_NORM_FACTOR  # 10 sec
             state[4, :A_DIM] = np.array(next_video_chunk_sizes) / M_IN_K / M_IN_K  # mega byte
-            state[5, -1] = np.minimum(video_chunk_remain, len(manifest.segments)) / float(len(manifest.segments))
+            state[5, -1] = np.minimum(video_chunk_remain, len(self.segments)) / float(len(self.segments))
         except ZeroDivisionError:
             # this should occur VERY rarely (1 out of 3000), should be a dash issue
             # in this case we ignore the observation and roll back to an eariler one
@@ -630,7 +632,7 @@ class PensieveClient(Client):
 
         # record [state, action, reward]
         # put it here after training, notice there is a shift in reward storage
-        if self.video_chunk_count >= len(manifest.segments):
+        if self.video_chunk_count >= len(self.segments):
             self.s_batch = [np.zeros((S_INFO, S_LEN))]
         else:
             self.s_batch.append(state)
@@ -663,7 +665,7 @@ class PensieveClient(Client):
             quality = self.get_quality_delay(next_seg)
             print 'Using quality ', quality, 'for segment ', next_seg
 
-            pdb.set_trace()
+            #pdb.set_trace()
             duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
 
             self.player.deplete_buffer(int(duration * 1000))
@@ -676,17 +678,4 @@ class PensieveClient(Client):
         print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
         print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000)) 
         print('Rebuffer count = %d' % self.player.rebuffer_event_count)
-
-    def report_delay(self, delay):
-        pass
-
-    def report_download(self, metrics, is_replacment):
-        global manifest
-
-        self.last_quality = metrics.quality
-        self.chunk_size = metrics.size
-        self.chunk_fetch_time = metrics.time
-
-    def report_seek(self, where):
-        pass
 

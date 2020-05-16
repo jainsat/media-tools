@@ -4,6 +4,7 @@ from common import fetch_file
 import staticmpdparser
 import client
 import json
+import pdb
 
 def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
     "Download MPD if url specified and then start downloading segments."
@@ -31,8 +32,11 @@ def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
         print("Starting BBA2 client")
         client.BBAClient(mpd_parser.mpd, base_url, base_dst, options, segment_sizes).download_bba2()
     elif options.pensieve:
+        with open('/home/rksinha_cs_stonybrook_edu/mpd_data.json') as json_file:
+            data = json.load(json_file)
+            segment_sizes = data['segment_size']
         print("Starting Pensieve client")
-        client.PensieveClient(mpd_parser.mpd, base_url, base_dst, options).download_pensieve()
+        client.PensieveClient(mpd_parser.mpd, base_url, base_dst, options, segment_sizes).download_pensieve()
     else:
         print("Starting Simple client")
         client.SimpleClient(mpd_parser.mpd, base_url, base_dst).download()
