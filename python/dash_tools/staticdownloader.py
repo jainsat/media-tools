@@ -13,7 +13,7 @@ def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
         mpd_str, _, _ = fetch_file(mpd_url)
         base_url, file_name = os.path.split(mpd_url)
     mpd_parser = staticmpdparser.StaticManifestParser(mpd_str)
-    pdb.set_trace()
+    #pdb.set_trace()
     if options.verbose:
         print str(mpd_parser.mpd)
 
