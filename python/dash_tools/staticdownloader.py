@@ -13,6 +13,7 @@ def download(options, mpd_url=None, mpd_str=None, base_url=None, base_dst=""):
         mpd_str, _, _ = fetch_file(mpd_url)
         base_url, file_name = os.path.split(mpd_url)
     mpd_parser = staticmpdparser.StaticManifestParser(mpd_str)
+    pdb.set_trace()
     if options.verbose:
         print str(mpd_parser.mpd)
 
@@ -58,7 +59,8 @@ def main():
     parser.add_option("-s", "--buffer_size", dest="buffer_size", type="int", default=20,
                       help='Specify the buffer size in seconds')
     (options, args) = parser.parse_args()
-    mpd_url = "http://10.128.0.33:5000/video/output.mpd"
+    #mpd_url = "http://10.128.0.33:5000/video/output.mpd"
+    mpd_url = "http://10.128.0.33:5000/manifest.mpd"
     base_dst = "download"
     download(options, mpd_url, base_dst=base_dst)
 

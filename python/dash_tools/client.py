@@ -20,7 +20,7 @@ import a3c
 ## The following parameters are specific to Pensieve ABR
 S_INFO = 6  # bit_rate, buffer_size, rebuffering_time, bandwidth_measurement, chunk_til_video_end
 S_LEN = 8  # take how many frames in the past
-A_DIM = 5
+A_DIM = 6
 ACTOR_LR_RATE = 0.0001
 CRITIC_LR_RATE = 0.001
 
@@ -69,13 +69,20 @@ class Config:
             print adaptation_set
         for rep in adaptation_set.representations:
             init = adaptation_set.segment_template.initialization
-            media = rep.segment_template.media
+            # Check if the given rep has segment_template or else use parent
+            segment_template = adaptation_set.segment_template
+            if hasattr(rep, 'segment_template'):
+                media = rep.segment_template.media
+                segment_template = rep.segment_template
+            else:
+                media = adaptation_set.segment_template.media
+
             rep_data = {'init' : init, 'media' : media,
-                        'duration' : rep.segment_template.duration,
-                        'timescale' : rep.segment_template.timescale,
-                        'dur_s' : (rep.segment_template.duration * 1.0 /
-                                   rep.segment_template.timescale),
-                        'startNr' : rep.segment_template.startNumber,
+                        'duration' : segment_template.duration,
+                        'timescale' : segment_template.timescale,
+                        'dur_s' : (segment_template.duration * 1.0 /
+                                   segment_template.timescale),
+                        'startNr' : segment_template.startNumber,
                         'periodDuration' : int(self.mpd.periods[0].duration),
                         'base_url' : self.base_url,
                         'bandwidth': rep.bandwidth,
@@ -103,10 +110,13 @@ class Client:
 
         # 2. Download the init segment in lowest quality.
         fetchObj = config.reps[lowQualIndex]
-        init_url = os.path.join(fetchObj['base_url'], fetchObj['init'])
+        # If there is a representationID, then replace it with least rep id
+        initName = fetchObj['init'].replace("$RepresentationID$", "video6")
+        init_url = os.path.join(fetchObj['base_url'], initName)
         print 'Using bitrate ', config.reps[lowQualIndex]['bandwidth'], ' for initial segment'
+        print 'init url', init_url
         data, duration, size = common.fetch_file(init_url)
-        file_writer.write_file(fetchObj['init'], data)
+        file_writer.write_file(initName, data)
         return duration, size
 
     def download_video_segment(self, config, fetcher, number):

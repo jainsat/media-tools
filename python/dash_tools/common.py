@@ -3,6 +3,7 @@ import urllib2
 import urlparse
 import time
 import os
+import pdb
 
 CREATE_DIRS = True
 
@@ -86,7 +87,9 @@ class Fetcher():
 
     def spec_media(self, rep, number):
         "Return specific media path element."
-        return rep['media'].replace("$Number$", str(number))
+        res = rep['media'].replace("$Number$", str(number))
+        res = res.replace("$RepresentationID$", rep['id'])
+        return res
 
     def make_media_url(self, rep, number):
         "Make media URL"

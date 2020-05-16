@@ -34,6 +34,7 @@ from xml.etree import ElementTree
 import datetime
 import calendar
 import re
+import pdb
 
 PERIOD = re.compile(r"PT(?:(?P<hours>\d+)H)?(?:(?P<minutes>\d+)M)?(?:(?P<seconds>\d+)(?:.(?P<fraction>\d+))?S)?")
 
@@ -119,7 +120,6 @@ class Mpd(MpdObject):
         for child in self.node:
             if child.tag.endswith("Period"):
                 self.periods.append(Period(child, self))
-    
 
     def __str__(self):
         fmt = ", ".join(["%s=%%(%s)s" % (v, v) for v in self.attribs])
@@ -206,13 +206,12 @@ class Representation(MpdObject):
     def __str__(self):
         fmt = ", ".join(["%s=%%(%s)s" % (v, v) for v in self.attribs])
         fmt = "[%s]: %s" % (self.__class__.__name__, fmt % self.__dict__) + "\n"
-        fmt = fmt + str(self.segment_template) + "\n"
+        if hasattr(self, 'segment_template'):
+            fmt = fmt + str(self.segment_template) + "\n"
         fmt = fmt + "\n";
 
         return fmt
         
-
-
 class StaticManifestParser(object):
     "Top-level Manifest Parser."
     #pylint: disable=too-few-public-methods
