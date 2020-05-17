@@ -340,7 +340,7 @@ class BolaClient(Client):
 
 class BBAClient(Client):
 
-    def __init__(self, mpd, base_url, base_dst, options, segment_sizes=None):
+    def __init__(self, mpd, base_url, base_dst, options):
         self.config = Config(mpd, base_url)
         self.quality_rep_map = {}
         self.file_writer = common.FileWriter(base_dst)
@@ -352,7 +352,6 @@ class BBAClient(Client):
         self.utilities = [math.log(b) + utility_offset for b in self.bitrates]
         self.verbose = options.verbose
         self.gp = options.gp
-        self.segment_sizes = segment_sizes
         self.rate_map = self.get_rate_map()
         # buffer_size is in ms
         self.buffer_size = options.buffer_size * 1000
@@ -492,14 +491,13 @@ class BBAClient(Client):
         :return: A dictionary of aveage segment sizes for each bitrate
         """
         average_segment_sizes = dict()
-        for quality in range(len(self.bitrates)):
-            segment_sizes = [ sizes[quality] for sizes in self.segment_sizes]
-            segment_sizes = [float(i) for i in segment_sizes]
-            try:
-                average_segment_sizes[quality] = sum(segment_sizes)/len(segment_sizes)
-            except ZeroDivisionError:
-                average_segment_sizes[quality] = 0
-        #average_segment_sizes[0] = sum(size_video6)/len(segment_sizes)
+        average_segment_sizes[0] = sum(size_video6)/CHUNK_TIL_VIDEO_END_CAP
+        average_segment_sizes[1] = sum(size_video5)/CHUNK_TIL_VIDEO_END_CAP
+        average_segment_sizes[2] = sum(size_video4)/CHUNK_TIL_VIDEO_END_CAP
+        average_segment_sizes[3] = sum(size_video3)/CHUNK_TIL_VIDEO_END_CAP
+        average_segment_sizes[4] = sum(size_video2)/CHUNK_TIL_VIDEO_END_CAP
+        average_segment_sizes[5] = sum(size_video1)/CHUNK_TIL_VIDEO_END_CAP
+        
         #print "The average segment size for is {}".format(average_segment_sizes.items())
         return average_segment_sizes
 
@@ -537,7 +535,7 @@ class BBAClient(Client):
            
            curr_bitrate, state = self.get_quality_bba2(average_segment_sizes, segment_download_rate, curr_bitrate, state)
            quality = curr_bitrate
-           #print 'Using quality ', quality, 'for segment ', next_seg, 'based on quality ', quality
+           print 'Using quality ', quality, 'for segment ', next_seg, 'based on quality ', quality
 
            segment_download_time, segment_size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
            self.player.deplete_buffer(int(segment_download_time * 1000))
