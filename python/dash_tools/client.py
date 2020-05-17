@@ -8,6 +8,7 @@ import videoplayer
 import os
 import pdb
 import sys
+import time
 from collections import OrderedDict
 
 import os
@@ -180,7 +181,8 @@ class AbrClient(Client):
         quality = 0
         bitrates = self.quality_rep_map.keys() 
         bitrates.sort()
-        while (quality + 1 < len(bitrates) and ((segment_time * bitrates[quality + 1])/tput) <= segment_time):
+        latency = 0.1 # 100ms
+        while (quality + 1 < len(bitrates) and (latency + (segment_time * bitrates[quality + 1])/tput) <= segment_time):
             quality += 1
         return bitrates[quality], quality
 
@@ -189,12 +191,16 @@ class AbrClient(Client):
         # download init segment
         duration, size = self.download_init_segment(self.config, self.file_writer)
         fetcher = common.Fetcher(self.file_writer)
+        res_bitrates = [self.bitrates[0] / 1000]
         startNumber = self.config.reps[0]['startNr'] 
+        os.system('./trigger_bandwidth_changer.sh &')
         # Download the first segment with lowest quality
         duration, size = self.download_video_segment(self.config, fetcher, startNumber)
+        res_end_time = [duration]
 
         # Re-calculate throughput and measure latency.
         throughput = size/duration
+        #print size, duration, throughput
         # Add the lowest quality to the buffer for first segment
         self.player.buffer_contents += [0]
         self.player.total_play_time += duration * 1000
@@ -215,16 +221,17 @@ class AbrClient(Client):
 
             # Call Abr(throughput). It returns the highest quality id that can be fetched.
             bitrateQuality, quality = self.quality_from_throughput(throughput)
-            print 'Using quality', quality, 'for segment', cur_seg, 'based on throughput ', throughput
+            #print 'Using quality', quality, 'for segment', cur_seg, 'based on throughput ', throughput
 
             # Use the quality as index to fetch the media
             # quality directly corresponds to the index in self.fetches
             duration, size = fetcher.fetch(self.quality_rep_map[bitrateQuality], number)
-
+            res_bitrates.append(self.bitrates[quality]/1000)
+            res_end_time.append(res_end_time[-1] + duration)
             self.player.deplete_buffer(int(duration * 1000))
             self.player.buffer_contents += [quality]
             # Recalculate throughput
-            throughput = size/duration
+            throughput = size*8/duration
             cur_seg += 1
 
         self.player.deplete_buffer(self.player.get_buffer_level())
@@ -233,6 +240,8 @@ class AbrClient(Client):
         print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
         print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000))        
         print('Rebuffer count = %d' % self.player.rebuffer_event_count)
+        print res_bitrates
+        print res_end_time
 
 class BolaClient(Client):
 
@@ -289,9 +298,11 @@ class BolaClient(Client):
        # download init segment
        self.download_init_segment(self.config, self.file_writer)
        fetcher = common.Fetcher(self.file_writer)
-
+       os.system('./trigger_bandwidth_changer.sh &')
+       res_bitrates = [self.bitrates[0] / 1000]
        # Download the first segment
        duration, size = self.download_video_segment(self.config, fetcher, 1)
+       res_end_time = [duration]
        # Add the lowest quality to the buffer for first segment
        self.player.buffer_contents += [0]
        self.player.total_play_time += duration * 1000
@@ -303,12 +314,15 @@ class BolaClient(Client):
            #if buffer is full
            bufferOverflow = self.player.get_buffer_level() + self.segment_time - self.buffer_size
            if bufferOverflow > 0:
+               print "bufferoverflow!!!!!!!!!!!"
                self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
 
            quality = self.quality_from_buffer()
-           print 'Using quality', quality, 'for segment', next_seg, 'based on quality', quality
+           res_bitrates.append(self.bitrates[quality] / 1000)
+           #print 'Using quality', quality, 'for segment', next_seg, 'based on quality', quality
 
            duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
+           res_end_time.append(res_end_time[-1] + duration)
            self.player.deplete_buffer(int(duration * 1000))
            self.player.buffer_contents += [quality]
            next_seg += 1
@@ -317,9 +331,11 @@ class BolaClient(Client):
        print("Total play time = %d sec" % (self.player.total_play_time/1000))
        print('total played utility: %f' % self.player.played_utility)
        print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
+       print('Total played bitrate: %d' % (self.player.played_bitrate))
        print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000))        
        print('Rebuffer count = %d' % self.player.rebuffer_event_count)
-
+       print res_bitrates
+       print res_end_time
 
 
 class BBAClient(Client):
@@ -380,12 +396,12 @@ class BBAClient(Client):
         # Calculate the current buffer occupancy percentage
         try:
             buffer_percentage = self.player.get_buffer_level()/self.buffer_size
-            print buffer_percentage
+            #print buffer_percentage
         except ZeroDivisionError:
             print "Buffer Size was found to be Zero"
             return None
         # Selecting the next bitrate based on the rate map
-        print "buffer percentage = ", buffer_percentage        
+        #print "buffer percentage = ", buffer_percentage        
         if buffer_percentage <= NETFLIX_RESERVOIR:
             next_bitrate = 0
         elif buffer_percentage >= NETFLIX_CUSHION:
@@ -407,7 +423,7 @@ class BBAClient(Client):
             # B > 0:875V also means that the chunk is downloaded eight times faster than it is played
             next_bitrate = curr_bitrate
             # delta-B = V - ChunkSize/c[k]
-            print "curr bit rate = ", curr_bitrate, " download rate = ", segment_download_rate
+            #print "curr bit rate = ", curr_bitrate, " download rate = ", segment_download_rate
             delta_B = (self.segment_time/1000) - average_segment_sizes[curr_bitrate]/segment_download_rate
             # Select the higher bitrate as long as delta B > 0.875 * V
             if delta_B > NETFLIX_INITIAL_FACTOR * self.segment_time:
@@ -432,14 +448,17 @@ class BBAClient(Client):
         # download init segment
        self.download_init_segment(self.config, self.file_writer)
        fetcher = common.Fetcher(self.file_writer)
-
+       os.system('./trigger_bandwidth_changer.sh &')
+       res_bitrates = [self.bitrates[0] / 1000]
+       
        # Download the first segment
        duration, size = self.download_video_segment(self.config, fetcher, 1)
+       res_end_time = [duration]
        # Add the lowest quality to the buffer for first segment
        self.player.buffer_contents += [0]
        self.player.total_play_time += duration * 1000
-       if self.verbose:
-           print "Downloaded first segment\n"
+       #if self.verbose:
+           #print "Downloaded first segment\n"
        total_segments = self.config.reps[0]['periodDuration'] / self.config.reps[0]['dur_s']
        next_seg = 2
        while next_seg <= total_segments:
@@ -449,9 +468,10 @@ class BBAClient(Client):
                self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
 
            quality = self.get_quality_netflix()
-           print 'Using quality ', quality, 'for segment ', next_seg, 'based on quality ', quality
-
+           #print 'Using quality ', quality, 'for segment ', next_seg, 'based on quality ', quality
+           res_bitrates.append(self.bitrates[quality] / 1000)
            duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
+           res_end_time.append(res_end_time[-1] + duration)
            self.player.deplete_buffer(int(duration * 1000))
            self.player.buffer_contents += [quality]
            next_seg += 1
@@ -462,7 +482,9 @@ class BBAClient(Client):
        print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
        print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000))
        print('Rebuffer count = %d' % self.player.rebuffer_event_count)
-
+       print res_bitrates
+       print res_end_time
+    
     def get_average_segment_sizes(self):
         """
         Module to get the avearge segment sizes for each bitrate
@@ -478,7 +500,7 @@ class BBAClient(Client):
             except ZeroDivisionError:
                 average_segment_sizes[quality] = 0
         #average_segment_sizes[0] = sum(size_video6)/len(segment_sizes)
-        print "The average segment size for is {}".format(average_segment_sizes.items())
+        #print "The average segment size for is {}".format(average_segment_sizes.items())
         return average_segment_sizes
 
 
@@ -515,7 +537,7 @@ class BBAClient(Client):
            
            curr_bitrate, state = self.get_quality_bba2(average_segment_sizes, segment_download_rate, curr_bitrate, state)
            quality = curr_bitrate
-           print 'Using quality ', quality, 'for segment ', next_seg, 'based on quality ', quality
+           #print 'Using quality ', quality, 'for segment ', next_seg, 'based on quality ', quality
 
            segment_download_time, segment_size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
            self.player.deplete_buffer(int(segment_download_time * 1000))
@@ -654,6 +676,8 @@ class PensieveClient(Client):
         # Download init segment
         self.download_init_segment(self.config, self.file_writer)
         fetcher = common.Fetcher(self.file_writer)
+        os.system('./trigger_bandwidth_changer.sh &')
+        res_bitrates = [self.bitrates[0] / 1000]
 
         # Download the first segment
         duration, size = self.download_video_segment(self.config, fetcher, 1)
@@ -661,6 +685,7 @@ class PensieveClient(Client):
         # Add the lowest quality to the buffer for first segment
         self.player.buffer_contents += [0]
         self.player.total_play_time += duration * 1000
+        res_end_time = [duration]
         if self.verbose:
             print "Downloaded first segment\n"
         total_segments = self.config.reps[0]['periodDuration'] / self.config.reps[0]['dur_s']
@@ -672,8 +697,10 @@ class PensieveClient(Client):
                 self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
             # Change here
             quality = self.get_quality_delay(next_seg)
+            res_bitrates.append(self.bitrates[quality] / 1000)
             print 'Using quality ', quality, 'for segment ', next_seg
             duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
+            res_end_time.append(res_end_time[-1] + duration)
             self.last_quality = quality
             self.chunk_size = size
             self.chunk_fetch_time = duration
@@ -687,3 +714,5 @@ class PensieveClient(Client):
         print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
         print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000)) 
         print('Rebuffer count = %d' % self.player.rebuffer_event_count)
+        print res_bitrates
+        print res_end_time

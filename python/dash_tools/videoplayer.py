@@ -20,8 +20,8 @@ class VideoPlayer:
         return self.segment_time * len(self.buffer_contents) - self.buffer_fcc
 
     def deplete_buffer(self, time):
-        print("len = %d " % len(self.buffer_contents))
-        print("segment time = %d" % self.segment_time)
+        #print("len = %d " % len(self.buffer_contents))
+        #print("segment time = %d" % self.segment_time)
         if len(self.buffer_contents) == 0:
             self.rebuffer_time += time
             self.total_play_time += time

@@ -17,7 +17,7 @@ def fetch_file(url):
         size = len(data)
         start_time_tuple = time.gmtime(start_time)
         start_string = time.strftime("%Y-%m-%d-%H:%M:%S", start_time_tuple)
-        print "%s  %.3fs for %8dB %s" % (start_string, end_time - start_time, size, url)
+        #print "%s  %.3fs for %8dB %s" % (start_string, end_time - start_time, size, url)
     except urllib2.HTTPError, exc:
         print "ERROR %s for %s" % (exc, url)
         data = exc.read()
@@ -47,7 +47,7 @@ class FileWriter(object):
         if self.base_dst == "":
             return
         path = os.path.join(self.base_dst, rel_path)
-        print "Writing file %s" % path
+        #print "Writing file %s" % path
         if CREATE_DIRS:
             dir_path, _ = os.path.split(path)
             if dir_path != "" and not os.path.exists(dir_path):
