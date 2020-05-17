@@ -63,7 +63,8 @@ class VideoPlayer:
                 self.total_play_time += time
                 time = 0
 
-        if time > 0:
+        if time > 0.000001:
+            print("Increasing rebuffer", time)
             self.rebuffer_time += time
             self.total_play_time += time
             self.rebuffer_event_count += 1

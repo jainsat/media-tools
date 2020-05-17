@@ -30,7 +30,6 @@ M_IN_K = 1000.0
 REBUF_PENALTY = 4.3  # 1 sec rebuffering -> this number of Mbps
 SMOOTH_PENALTY = 1
 RAND_RANGE = 1000
-## TODO - change this
 VIDEO_BIT_RATE = [300,750,1200,1850,2850,4300] # Kbps
 BUFFER_NORM_FACTOR = 10.0
 TOTAL_VIDEO_CHUNKS = 48
@@ -478,7 +477,8 @@ class BBAClient(Client):
                 average_segment_sizes[quality] = sum(segment_sizes)/len(segment_sizes)
             except ZeroDivisionError:
                 average_segment_sizes[quality] = 0
-        print "The avearge segment size for is {}".format(average_segment_sizes.items())
+        #average_segment_sizes[0] = sum(size_video6)/len(segment_sizes)
+        print "The average segment size for is {}".format(average_segment_sizes.items())
         return average_segment_sizes
 
 
@@ -546,8 +546,7 @@ class PensieveClient(Client):
         self.buffer_size = options.buffer_size * 1000
         self.verbose = options.verbose
         self.segment_time = self.config.reps[0]['dur_s']*1000
-        self.player = videoplayer.VideoPlayer(self.segment_time,
-                self.utilities, self.bitrates)
+        self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
 
         self.sess = tf.Session()
 
@@ -572,14 +571,12 @@ class PensieveClient(Client):
 
         self.last_quality = DEFAULT_QUALITY
         self.last_bit_rate = DEFAULT_QUALITY
-        self.last_total_rebuf = 0
         # need this storage, because observation only contains total rebuffering time
         # we compute the difference to get
 
         self.video_chunk_count = 0
         self.chunk_fetch_time = 0
         self.chunk_size = 0
-        self.rebuffer_time = 0
 
     def get_chunk_size(self, quality, index):
         if index+A_DIM <= TOTAL_VIDEO_CHUNKS:
@@ -590,12 +587,9 @@ class PensieveClient(Client):
             return 0
 
     def get_quality_delay(self, segment_index):
-        #### Verify this
-        self.rebuffer_time = float(self.rebuffer_time - self.last_total_rebuf)
-        reward = VIDEO_BIT_RATE[self.last_quality] / M_IN_K - REBUF_PENALTY * self.rebuffer_time / M_IN_K - SMOOTH_PENALTY * np.abs(VIDEO_BIT_RATE[self.last_quality] - self.last_bit_rate) / M_IN_K
+        reward = VIDEO_BIT_RATE[self.last_quality] / M_IN_K - REBUF_PENALTY * self.player.rebuffer_time / M_IN_K - SMOOTH_PENALTY * np.abs(VIDEO_BIT_RATE[self.last_quality] - self.last_bit_rate) / M_IN_K
 
         self.last_bit_rate = VIDEO_BIT_RATE[self.last_quality]
-        self.last_total_rebuf = self.rebuffer_time
 
         # retrieve previous state
         if len(self.s_batch) == 0:
@@ -638,7 +632,6 @@ class PensieveClient(Client):
         action_prob = self.actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
         action_cumsum = np.cumsum(action_prob)
         bit_rate = (action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
-        print "ritz",  (action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE))
         # Note: we need to discretize the probability into 1/RAND_RANGE steps,
         # because there is an intrinsic discrepancy in passing single state and batch states
 
