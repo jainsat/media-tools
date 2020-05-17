@@ -570,8 +570,6 @@ class PensieveClient(Client):
         self.a_batch = [self.init_action]
         self.r_batch = []
 
-        self.train_counter = 0
-
         self.last_quality = DEFAULT_QUALITY
         self.last_bit_rate = DEFAULT_QUALITY
         self.last_total_rebuf = 0
@@ -592,6 +590,7 @@ class PensieveClient(Client):
             return 0
 
     def get_quality_delay(self, segment_index):
+        #### Verify this
         self.rebuffer_time = float(self.rebuffer_time - self.last_total_rebuf)
         reward = VIDEO_BIT_RATE[self.last_quality] / M_IN_K - REBUF_PENALTY * self.rebuffer_time / M_IN_K - SMOOTH_PENALTY * np.abs(VIDEO_BIT_RATE[self.last_quality] - self.last_bit_rate) / M_IN_K
 
@@ -619,10 +618,10 @@ class PensieveClient(Client):
         for i in range(A_DIM):
             next_video_chunk_sizes.append(self.get_chunk_size(i, self.video_chunk_count))
 
-
         # this should be S_INFO number of terms
         try:
             state[0, -1] = VIDEO_BIT_RATE[self.last_quality] / float(np.max(VIDEO_BIT_RATE))
+            ### Verify buffer level size
             state[1, -1] = self.player.get_buffer_level() / BUFFER_NORM_FACTOR
             state[2, -1] = float(video_chunk_size) / float(video_chunk_fetch_time) / M_IN_K  # kilo byte / ms
             state[3, -1] = float(video_chunk_fetch_time) / M_IN_K / BUFFER_NORM_FACTOR  # 10 sec
@@ -682,7 +681,9 @@ class PensieveClient(Client):
             quality = self.get_quality_delay(next_seg)
             print 'Using quality ', quality, 'for segment ', next_seg
             duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
-
+            self.last_quality = quality
+            self.chunk_size = size
+            self.chunk_fetch_time = duration
             self.player.deplete_buffer(int(duration * 1000))
             self.player.buffer_contents += [quality]
             next_seg += 1
@@ -693,4 +694,3 @@ class PensieveClient(Client):
         print('Avg played bitrate: %f' % (self.player.played_bitrate / total_segments))
         print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000)) 
         print('Rebuffer count = %d' % self.player.rebuffer_event_count)
-
