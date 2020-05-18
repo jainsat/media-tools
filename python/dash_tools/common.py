@@ -17,7 +17,7 @@ def fetch_file(url):
         size = len(data)
         start_time_tuple = time.gmtime(start_time)
         start_string = time.strftime("%Y-%m-%d-%H:%M:%S", start_time_tuple)
-        print "%s  %.3fs for %8dB %s" % (start_string, end_time - start_time, size, url)
+        # print "%s  %.3fs for %8dB %s" % (start_string, end_time - start_time, size, url)
     except urllib2.HTTPError, exc:
         print "ERROR %s for %s" % (exc, url)
         data = exc.read()

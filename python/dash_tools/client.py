@@ -603,6 +603,7 @@ class PensieveClient(Client):
         self.video_chunk_count = 0
         self.chunk_fetch_time = 0
         self.chunk_size = 0
+        self.ptime = 0
 
     def get_chunk_size(self, quality, index):
         if index+A_DIM <= TOTAL_VIDEO_CHUNKS:
@@ -633,6 +634,9 @@ class PensieveClient(Client):
         # compute number of video chunks left
         video_chunk_remain = TOTAL_VIDEO_CHUNKS - self.video_chunk_count
         self.video_chunk_count += 1
+        self.ptime += self.chunk_fetch_time
+
+        print("Time", self.ptime, "Video bit rate", self.last_bit_rate, "Buffer", self.player.get_buffer_level() / MILLISECONDS_IN_SECOND, "Chunk size", video_chunk_size, "duration", video_chunk_fetch_time, "reward", reward)
 
         # dequeue history record
         state = np.roll(state, -1, axis=1)
@@ -669,10 +673,11 @@ class PensieveClient(Client):
         action_prob = self.actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
         action_cumsum = np.cumsum(action_prob)
         bit_rate = (action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
+
         # Note: we need to discretize the probability into 1/RAND_RANGE steps,
         # because there is an intrinsic discrepancy in passing single state and batch states
 
-        print("Pensieve", bit_rate, self.video_chunk_count)
+        #print("Pensieve", bit_rate, self.video_chunk_count)
         # record [state, action, reward]
         # put it here after training, notice there is a shift in reward storage
         if self.video_chunk_count >= TOTAL_VIDEO_CHUNKS:
@@ -711,9 +716,11 @@ class PensieveClient(Client):
             
             quality = self.get_quality_delay(next_seg)
             res_bitrates.append(self.bitrates[quality] / 1000)
-            print 'Using quality ', quality, 'for segment ', next_seg
+            #print 'Using quality ', quality, 'for segment ', next_seg
             duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
+            print("duration", duration)
             res_end_time.append(res_end_time[-1] + duration)
+            #res_end_time.append(self.player.total_play_time)
             self.chunk_size = size
             self.chunk_fetch_time = duration
             self.player.deplete_buffer(int(duration * 1000))
