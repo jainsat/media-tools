@@ -86,3 +86,5 @@ server/3G_trace.json - 3G network trace file <br/>
 server/static/manifest.mpd - MPD file of 6 reps. Video segments can be found here- https://github.com/hongzimao/pensieve/tree/master/video_server <br/>
 plots/*.py - Plot graphs code <br/>
 trigger_bandwidth_changer.sh - Script to trigger simulate_nw_trace.py on the remote server. Change the IP here as per your requirements. <br/>
+
+Thanks to @mdasari823 for mentoring.
