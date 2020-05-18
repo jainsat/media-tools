@@ -1,5 +1,8 @@
 import math
 
+REBUF_PENALTY = 4.3
+SMOOTH_PENALTY = 1
+
 class VideoPlayer:
     def __init__(self, segment_time, utilities, bitrates):
         self.segment_time = segment_time
@@ -15,6 +18,13 @@ class VideoPlayer:
         self.total_bitrate_change = 0
         self.total_log_bitrate_change = 0
         self.rebuffer_event_count = 0
+        self.bitrate_utility = 0
+        self.rebuf_penalty = 0
+        self.smoothness_penalty = 0
+        self.qoecount = 0
+        self.last_played_bitrate = self.bitrates[0]
+        self.last_total_rebuffer = 0
+        self.total_qoe = 0
     
     def get_buffer_level(self):
         return self.segment_time * len(self.buffer_contents) - self.buffer_fcc
@@ -46,12 +56,25 @@ class VideoPlayer:
             quality = self.buffer_contents[0]
             self.played_utility += self.utilities[quality]
             self.played_bitrate += self.bitrates[quality]
+
+            # QOE metrics
+            # In Mbit
+            self.bitrate_utility += (self.last_played_bitrate/ 1000.0 / 1000.0)
+            rebuffer_time = self.rebuffer_time - self.last_total_rebuffer
+            # in secs
+            self.rebuf_penalty += (REBUF_PENALTY * rebuffer_time / 1000.0)
+            # in Mbit
+            self.smoothness_penalty += (SMOOTH_PENALTY * abs(self.played_bitrate - self.last_played_bitrate) / 1000.0 / 1000.0)
+            self.total_qoe += (self.bitrate_utility - self.rebuf_penalty - self.smoothness_penalty)
+            self.qoecount += 1
+
             if quality != self.last_played and self.last_played != None:
                 self.total_bitrate_change += abs(self.bitrates[quality] -
                                               self.bitrates[self.last_played])
                 #self.total_log_bitrate_change += abs(math.log(self.bitrates[quality] /
                 #                                                     self.bitrates[self.last_played]))
             self.last_played = quality
+            self.last_played_bitrate = self.played_bitrate
 
             if time >= self.segment_time:
                 self.buffer_contents.pop(0)
@@ -62,7 +85,7 @@ class VideoPlayer:
                 self.buffer_fcc = time
                 self.total_play_time += time
                 time = 0
-
+        self.last_total_rebuffer = self.rebuffer_time
         if time > 0.000001:
             print("Increasing rebuffer", time)
             self.rebuffer_time += time

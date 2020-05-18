@@ -243,6 +243,11 @@ class AbrClient(Client):
         print('Rebuffer count = %d' % self.player.rebuffer_event_count)
         print res_bitrates
         print res_end_time
+        print("QOE metrics")
+        print("Total Bitrate Utility=", self.player.bitrate_utility)
+        print("Rebuffer penalty=", self.player.rebuf_penalty)
+        print("Smoothness penalty=", self.player.smoothness_penalty)
+        print("Average QOE=", self.player.total_qoe/self.player.qoecount*1.0)
 
 class BolaClient(Client):
 
@@ -337,7 +342,11 @@ class BolaClient(Client):
        print('Rebuffer count = %d' % self.player.rebuffer_event_count)
        print res_bitrates
        print res_end_time
-
+       print("QOE metrics")
+       print("Total Bitrate Utility=", self.player.bitrate_utility)
+       print("Rebuffer penalty=", self.player.rebuf_penalty)
+       print("Smoothness penalty=", self.player.smoothness_penalty)
+       print("Average QOE=", self.player.total_qoe/self.player.qoecount*1.0)
 
 class BBAClient(Client):
 
@@ -484,6 +493,11 @@ class BBAClient(Client):
        print('Rebuffer count = %d' % self.player.rebuffer_event_count)
        print res_bitrates
        print res_end_time
+       print("QOE metrics")
+       print("Total Bitrate Utility=", self.player.bitrate_utility)
+       print("Rebuffer penalty=", self.player.rebuf_penalty)
+       print("Smoothness penalty=", self.player.smoothness_penalty)
+       print("Average QOE=", self.player.total_qoe/self.player.qoecount*1.0)
     
     def get_average_segment_sizes(self):
         """
@@ -554,6 +568,11 @@ class BBAClient(Client):
        print('Rebuffer count = %d' % self.player.rebuffer_event_count)
        print res_bitrates
        print res_end_time
+       print("QOE metrics")
+       print("Total Bitrate Utility=", self.player.bitrate_utility)
+       print("Rebuffer penalty=", self.player.rebuf_penalty)
+       print("Smoothness penalty=", self.player.smoothness_penalty)
+       print("Average QOE=", self.player.total_qoe/self.player.qoecount*1.0)
 
 class PensieveClient(Client):
     def __init__(self, mpd, base_url, base_dst, options):
@@ -636,7 +655,7 @@ class PensieveClient(Client):
         self.video_chunk_count += 1
         self.ptime += self.chunk_fetch_time
 
-        print("Time", self.ptime, "Video bit rate", self.last_bit_rate, "Buffer", self.player.get_buffer_level() / MILLISECONDS_IN_SECOND, "Chunk size", video_chunk_size, "duration", video_chunk_fetch_time, "reward", reward)
+        #print("Time", self.ptime, "Video bit rate", self.last_bit_rate, "Buffer", self.player.get_buffer_level() / MILLISECONDS_IN_SECOND, "Chunk size", video_chunk_size, "duration", video_chunk_fetch_time, "reward", reward)
 
         # dequeue history record
         state = np.roll(state, -1, axis=1)
@@ -648,15 +667,11 @@ class PensieveClient(Client):
         # this should be S_INFO number of terms
         try:
             # bit_rate
-            #print("Term 1", VIDEO_BIT_RATE[self.last_quality], np.max(VIDEO_BIT_RATE))
             state[0, -1] = VIDEO_BIT_RATE[self.last_quality] / float(np.max(VIDEO_BIT_RATE))
             # buffer_size
-            #print("Term 2", self.player.get_buffer_level() / MILLISECONDS_IN_SECOND)
             state[1, -1] = self.player.get_buffer_level() / MILLISECONDS_IN_SECOND / BUFFER_NORM_FACTOR
             # rebuffering_time
-            #print("Term 3", float(video_chunk_size),  float(video_chunk_fetch_time))
             state[2, -1] = float(video_chunk_size) / float(video_chunk_fetch_time) / M_IN_K  # kilo byte / ms
-            #print("Term 4", float(video_chunk_fetch_time))
             state[3, -1] = float(video_chunk_fetch_time) / M_IN_K / BUFFER_NORM_FACTOR  # 10 sec
             # bandwidth_measurement
             state[4, :A_DIM] = np.array(next_video_chunk_sizes) / M_IN_K / M_IN_K  # mega byte
@@ -673,12 +688,7 @@ class PensieveClient(Client):
         action_prob = self.actor.predict(np.reshape(state, (1, S_INFO, S_LEN)))
         action_cumsum = np.cumsum(action_prob)
         bit_rate = (action_cumsum > np.random.randint(1, RAND_RANGE) / float(RAND_RANGE)).argmax()
-
-        # Note: we need to discretize the probability into 1/RAND_RANGE steps,
-        # because there is an intrinsic discrepancy in passing single state and batch states
-
-        #print("Pensieve", bit_rate, self.video_chunk_count)
-        # record [state, action, reward]
+        
         # put it here after training, notice there is a shift in reward storage
         if self.video_chunk_count >= TOTAL_VIDEO_CHUNKS:
             self.s_batch = [np.zeros((S_INFO, S_LEN))]
@@ -718,7 +728,6 @@ class PensieveClient(Client):
             res_bitrates.append(self.bitrates[quality] / 1000)
             #print 'Using quality ', quality, 'for segment ', next_seg
             duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
-            print("duration", duration)
             res_end_time.append(res_end_time[-1] + duration)
             #res_end_time.append(self.player.total_play_time)
             self.chunk_size = size
@@ -729,9 +738,14 @@ class PensieveClient(Client):
 
         self.player.deplete_buffer(self.player.get_buffer_level())
         print("Total play time = %d sec" % (self.player.total_play_time/1000))
-        print('total played utility: %f' % self.player.played_utility)
-        print('Avg played bitrate: %f' % (self.player.played_bitrate / TOTAL_VIDEO_CHUNKS))
+        print('Total played utility= %f' % self.player.played_utility)
+        print('Avg played bitrate= %f' % (self.player.played_bitrate / TOTAL_VIDEO_CHUNKS))
         print('Rebuffer time = %f sec' % (self.player.rebuffer_time / 1000)) 
         print('Rebuffer count = %d' % self.player.rebuffer_event_count)
         print res_bitrates
         print res_end_time
+        print("QOE metrics")
+        print("Total Bitrate Utility=", self.player.bitrate_utility)
+        print("Rebuffer penalty=", self.player.rebuf_penalty)
+        print("Smoothness penalty=", self.player.smoothness_penalty)
+        print("Average QOE=", self.player.total_qoe/self.player.qoecount*1.0)
