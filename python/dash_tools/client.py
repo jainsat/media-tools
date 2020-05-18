@@ -174,6 +174,7 @@ class AbrClient(Client):
         # Segment time is in ms
         self.segment_time = self.config.reps[0]['dur_s']*1000
         self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
+        self.bandwidth_changerscript_path = options.bandwidth_changerscript_path
 
     def quality_from_throughput(self, tput):
         # in seconds
@@ -193,7 +194,7 @@ class AbrClient(Client):
         fetcher = common.Fetcher(self.file_writer)
         res_bitrates = [self.bitrates[0] / 1000]
         startNumber = self.config.reps[0]['startNr'] 
-        os.system('./trigger_bandwidth_changer.sh &')
+        os.system('%s &' % self.bandwidth_changerscript_path)
         # Download the first segment with lowest quality
         duration, size = self.download_video_segment(self.config, fetcher, startNumber)
         res_end_time = [duration]
@@ -271,9 +272,8 @@ class BolaClient(Client):
         # buffer_size is in ms
         self.buffer_size = options.buffer_size * 1000
         print "buffer = ", self.buffer_size, "gp = ", self.gp
-        #self.abr_osc = config['abr_osc']
-        #self.abr_basic = config['abr_basic']
 
+        self.bandwidth_changerscript_path = options.bandwidth_changerscript_path
         # Segment time is in ms
         self.segment_time = self.config.reps[0]['dur_s']*1000
         self.Vp = (self.buffer_size - self.segment_time) / (self.utilities[-1] + self.gp)
@@ -307,7 +307,7 @@ class BolaClient(Client):
        # download init segment
        self.download_init_segment(self.config, self.file_writer)
        fetcher = common.Fetcher(self.file_writer)
-       os.system('./trigger_bandwidth_changer.sh &')
+       os.system('%s &' % self.bandwidth_changerscript_path)
        res_bitrates = [self.bitrates[0] / 1000]
        # Download the first segment
        duration, size = self.download_video_segment(self.config, fetcher, 1)
@@ -378,6 +378,7 @@ class BBAClient(Client):
 
         # Segment time is in ms
         self.segment_time = self.config.reps[0]['dur_s']*1000
+        self.bandwidth_changerscript_path = options.bandwidth_changerscript_path
         self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
 
     def get_rate_map(self):
@@ -426,10 +427,9 @@ class BBAClient(Client):
         elif buffer_percentage >= NETFLIX_CUSHION:
             next_bitrate = len(self.bitrates) - 1
         else:
-            if self.verbose:
-                print "Rate Map: {}".format(self.rate_map)
+            #if self.verbose:
+            #    print "Rate Map: {}".format(self.rate_map)
             for marker in reversed(self.rate_map.keys()):
-                #print "comparing marker ", marker, " and ", buffer_percentage
                 if marker < buffer_percentage:
                     break
                 next_bitrate = self.rate_map[marker]
@@ -467,7 +467,7 @@ class BBAClient(Client):
         # download init segment
        self.download_init_segment(self.config, self.file_writer)
        fetcher = common.Fetcher(self.file_writer)
-       os.system('./trigger_bandwidth_changer.sh &')
+       os.system('%s &' % self.bandwidth_changerscript_path)
        res_bitrates = [self.bitrates[0] / 1000]
        
        # Download the first segment
@@ -538,7 +538,7 @@ class BBAClient(Client):
        # download init segment
        self.download_init_segment(self.config, self.file_writer)
        fetcher = common.Fetcher(self.file_writer)
-       os.system('./trigger_bandwidth_changer.sh &')
+       os.system('%s &' % self.bandwidth_changerscript_path)
        res_bitrates = [self.bitrates[0] / 1000]
        # get average segment sizes.
        average_segment_sizes = self.get_average_segment_sizes()
@@ -614,6 +614,7 @@ class PensieveClient(Client):
         self.buffer_size = options.buffer_size * 1000
         self.verbose = options.verbose
         self.segment_time = self.config.reps[0]['dur_s']*1000
+        self.bandwidth_changerscript_path = options.bandwidth_changerscript_path
         self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
         self.sess = tf.Session()
         self.quality_switch =  0
@@ -726,7 +727,7 @@ class PensieveClient(Client):
         # Download init segment
         self.download_init_segment(self.config, self.file_writer)
         fetcher = common.Fetcher(self.file_writer)
-        os.system('./trigger_bandwidth_changer.sh &')
+        os.system('%s &' % self.bandwidth_changerscript_path)
         res_bitrates = [self.bitrates[0] / 1000]
 
         # Download the first segment

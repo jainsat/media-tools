@@ -1,3 +1,14 @@
+# media -tools
+
+This houses all the client, video player, server side and helper codes for 
+the project - "Adaptive Video Streaming Over Wireless Networks".
+
+Refer to the python/dash_tools/README.md for more details on how to run, collect
+results etc.
+
+
+Below section inherited from the parent repo -
+
 # media-tools
 A collection of tools for analyzing, handling, and creating media and media
 containers.
