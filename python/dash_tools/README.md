@@ -3,7 +3,7 @@
 # Platform info
 Requirements -
 Python2/3, linux OS, node, npm
- 
+
 Following packages/libraries should be installed -
 tensor-flow -
 sudo apt-get -y install python-pip python-dev
