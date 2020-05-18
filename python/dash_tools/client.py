@@ -170,6 +170,7 @@ class AbrClient(Client):
         self.utilities = [math.log(b) + utility_offset for b in self.bitrates]
         self.buffer_size = options.buffer_size * 1000
         self.verbose = options.verbose
+        self.quality_switch = 0
         # Segment time is in ms
         self.segment_time = self.config.reps[0]['dur_s']*1000
         self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
@@ -196,7 +197,7 @@ class AbrClient(Client):
         # Download the first segment with lowest quality
         duration, size = self.download_video_segment(self.config, fetcher, startNumber)
         res_end_time = [duration]
-
+        last_quality  = self.bitrates[0]
         # Re-calculate throughput and measure latency.
         throughput = size/duration
         #print size, duration, throughput
@@ -221,7 +222,8 @@ class AbrClient(Client):
             # Call Abr(throughput). It returns the highest quality id that can be fetched.
             bitrateQuality, quality = self.quality_from_throughput(throughput)
             #print 'Using quality', quality, 'for segment', cur_seg, 'based on throughput ', throughput
-
+            self.quality_switch += abs(last_quality - self.bitrates[quality])
+            last_quality = self.bitrates[quality]
             # Use the quality as index to fetch the media
             # quality directly corresponds to the index in self.fetches
             duration, size = fetcher.fetch(self.quality_rep_map[bitrateQuality], number)
@@ -242,10 +244,14 @@ class AbrClient(Client):
         print res_bitrates
         print res_end_time
         print("QOE metrics")
-        print("Total Bitrate Utility=", self.player.bitrate_utility)
-        print("Rebuffer penalty=", self.player.rebuf_penalty)
-        print("Smoothness penalty=", self.player.smoothness_penalty)
-        print("Average QOE=", self.player.total_qoe/self.player.qoecount*1.0)
+        bitrate_reward = self.player.played_bitrate / 1000.0
+        rebuf_penalty = REBUF_PENALTY * self.player.rebuffer_time / 1000.0
+        smooth_penalty = SMOOTH_PENALTY * self.quality_switch / 1000.0
+        total_qoe = bitrate_reward - rebuf_penalty - smooth_penalty
+        print("Total Bitrate Utility= ", bitrate_reward)
+        print("Rebuffer penalty= ", rebuf_penalty)
+        print("Smoothness penalty=", smooth_penalty)
+        print("Average QOE=", total_qoe/total_segments)
 
 class BolaClient(Client):
 
@@ -261,6 +267,7 @@ class BolaClient(Client):
         self.utilities = [math.log(b) + utility_offset for b in self.bitrates]
         self.verbose = options.verbose
         self.gp = options.gp
+        self.quality_switch = 0
         # buffer_size is in ms
         self.buffer_size = options.buffer_size * 1000
         print "buffer = ", self.buffer_size, "gp = ", self.gp
@@ -305,6 +312,7 @@ class BolaClient(Client):
        # Download the first segment
        duration, size = self.download_video_segment(self.config, fetcher, 1)
        res_end_time = [duration]
+       last_quality = self.bitrates[0]
        # Add the lowest quality to the buffer for first segment
        self.player.buffer_contents += [0]
        self.player.total_play_time += duration * 1000
@@ -322,7 +330,8 @@ class BolaClient(Client):
            quality = self.quality_from_buffer()
            res_bitrates.append(self.bitrates[quality] / 1000)
            #print 'Using quality', quality, 'for segment', next_seg, 'based on quality', quality
-
+           self.quality_switch += abs(last_quality - self.bitrates[quality])
+           last_quality = self.bitrates[quality]
            duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
            res_end_time.append(res_end_time[-1] + duration)
            self.player.deplete_buffer(int(duration * 1000))
@@ -339,10 +348,14 @@ class BolaClient(Client):
        print res_bitrates
        print res_end_time
        print("QOE metrics")
-       print("Total Bitrate Utility=", self.player.bitrate_utility)
-       print("Rebuffer penalty=", self.player.rebuf_penalty)
-       print("Smoothness penalty=", self.player.smoothness_penalty)
-       print("Average QOE=", self.player.total_qoe/self.player.qoecount*1.0)
+       bitrate_reward = self.player.played_bitrate / 1000.0
+       rebuf_penalty = REBUF_PENALTY * self.player.rebuffer_time / 1000.0
+       smooth_penalty = SMOOTH_PENALTY * self.quality_switch / 1000.0
+       total_qoe = bitrate_reward - rebuf_penalty - smooth_penalty
+       print("Total Bitrate Utility= ", bitrate_reward)
+       print("Rebuffer penalty= ", rebuf_penalty)
+       print("Smoothness penalty=", smooth_penalty)
+       print("Average QOE=", total_qoe/total_segments)
 
 class BBAClient(Client):
 
@@ -358,6 +371,7 @@ class BBAClient(Client):
         self.utilities = [math.log(b) + utility_offset for b in self.bitrates]
         self.verbose = options.verbose
         self.gp = options.gp
+        self.quality_switch = 0
         self.rate_map = self.get_rate_map()
         # buffer_size is in ms
         self.buffer_size = options.buffer_size * 1000
@@ -459,6 +473,7 @@ class BBAClient(Client):
        # Download the first segment
        duration, size = self.download_video_segment(self.config, fetcher, 1)
        res_end_time = [duration]
+       last_quality = self.bitrates[0]
        # Add the lowest quality to the buffer for first segment
        self.player.buffer_contents += [0]
        self.player.total_play_time += duration * 1000
@@ -473,6 +488,8 @@ class BBAClient(Client):
                self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
 
            quality = self.get_quality_netflix()
+           self.quality_switch += abs(last_quality - self.bitrates[quality])
+           last_quality = self.bitrates[quality]
            #print 'Using quality ', quality, 'for segment ', next_seg, 'based on quality ', quality
            res_bitrates.append(self.bitrates[quality] / 1000)
            duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
@@ -490,10 +507,14 @@ class BBAClient(Client):
        print res_bitrates
        print res_end_time
        print("QOE metrics")
-       print("Total Bitrate Utility=", self.player.bitrate_utility)
-       print("Rebuffer penalty=", self.player.rebuf_penalty)
-       print("Smoothness penalty=", self.player.smoothness_penalty)
-       print("Average QOE=", self.player.total_qoe/self.player.qoecount*1.0)
+       bitrate_reward = self.player.played_bitrate / 1000.0
+       rebuf_penalty = REBUF_PENALTY * self.player.rebuffer_time / 1000.0
+       smooth_penalty = SMOOTH_PENALTY * self.quality_switch / 1000.0
+       total_qoe = bitrate_reward - rebuf_penalty - smooth_penalty
+       print("Total Bitrate Utility= ", bitrate_reward)
+       print("Rebuffer penalty= ", rebuf_penalty)
+       print("Smoothness penalty=", smooth_penalty)
+       print("Average QOE=", total_qoe/total_segments)
     
     def get_average_segment_sizes(self):
         """
@@ -526,6 +547,7 @@ class BBAClient(Client):
        # Download the first segment
        duration, size = self.download_video_segment(self.config, fetcher, 1)
        # Add the lowest quality to the buffer for first segment
+       last_quality = self.bitrates[0]
        res_end_time = [duration]
        self.player.buffer_contents += [0]
        self.player.total_play_time += duration * 1000
@@ -548,6 +570,8 @@ class BBAClient(Client):
            
            curr_bitrate, state = self.get_quality_bba2(average_segment_sizes, segment_download_rate, curr_bitrate, state)
            quality = curr_bitrate
+           self.quality_switch += abs(last_quality - self.bitrates[quality])
+           last_quality = self.bitrates[quality]
            print 'Using quality ', quality, 'for segment ', next_seg, 'based on quality ', quality
            res_bitrates.append(self.bitrates[quality] / 1000)
            segment_download_time, segment_size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
@@ -565,10 +589,14 @@ class BBAClient(Client):
        print res_bitrates
        print res_end_time
        print("QOE metrics")
-       print("Total Bitrate Utility=", self.player.bitrate_utility)
-       print("Rebuffer penalty=", self.player.rebuf_penalty)
-       print("Smoothness penalty=", self.player.smoothness_penalty)
-       print("Average QOE=", self.player.total_qoe/self.player.qoecount*1.0)
+       bitrate_reward = self.player.played_bitrate / 1000.0
+       rebuf_penalty = REBUF_PENALTY * self.player.rebuffer_time / 1000.0
+       smooth_penalty = SMOOTH_PENALTY * self.quality_switch / 1000.0
+       total_qoe = bitrate_reward - rebuf_penalty - smooth_penalty
+       print("Total Bitrate Utility= ", bitrate_reward)
+       print("Rebuffer penalty= ", rebuf_penalty)
+       print("Smoothness penalty=", smooth_penalty)
+       print("Average QOE=", total_qoe/total_segments)
 
 class PensieveClient(Client):
     def __init__(self, mpd, base_url, base_dst, options):
@@ -588,7 +616,7 @@ class PensieveClient(Client):
         self.segment_time = self.config.reps[0]['dur_s']*1000
         self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
         self.sess = tf.Session()
-
+        self.quality_switch =  0
         self.actor = a3c.ActorNetwork(self.sess, state_dim=[S_INFO, S_LEN], action_dim=A_DIM, learning_rate=ACTOR_LR_RATE)
         self.critic = a3c.CriticNetwork(self.sess, state_dim=[S_INFO, S_LEN], learning_rate=CRITIC_LR_RATE)
 
@@ -708,6 +736,7 @@ class PensieveClient(Client):
         # Add the lowest quality to the buffer for first segment
         self.player.buffer_contents += [0]
         self.player.total_play_time += duration * 1000
+        last_quality = self.bitrates[0]
         res_end_time = [duration]
         if self.verbose:
             print "Downloaded first segment\n"
@@ -720,6 +749,8 @@ class PensieveClient(Client):
                 self.player.deplete_buffer( self.segment_time)
             
             quality = self.get_quality_delay(next_seg)
+            self.quality_switch += abs(last_quality - self.bitrates[quality])
+            last_quality = self.bitrates[quality]
             res_bitrates.append(self.bitrates[quality] / 1000)
             #print 'Using quality ', quality, 'for segment ', next_seg
             duration, size = fetcher.fetch(self.quality_rep_map[self.bitrates[quality]], next_seg)
@@ -740,7 +771,11 @@ class PensieveClient(Client):
         print res_bitrates
         print res_end_time
         print("QOE metrics")
-        print("Total Bitrate Utility=", self.player.bitrate_utility)
-        print("Rebuffer penalty=", self.player.rebuf_penalty)
-        print("Smoothness penalty=", self.player.smoothness_penalty)
-        print("Average QOE=", self.player.total_qoe/self.player.qoecount*1.0)
+        bitrate_reward = self.player.played_bitrate / 1000.0
+        rebuf_penalty = REBUF_PENALTY * self.player.rebuffer_time / 1000.0
+        smooth_penalty = SMOOTH_PENALTY * self.quality_switch / 1000.0
+        total_qoe = bitrate_reward - rebuf_penalty - smooth_penalty
+        print("Total Bitrate Utility= ", bitrate_reward)
+        print("Rebuffer penalty= ", rebuf_penalty)
+        print("Smoothness penalty=", smooth_penalty)
+        print("Average QOE=", total_qoe/TOTAL_VIDEO_CHUNKS)

@@ -3,7 +3,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 # Total Bitrate utility
-height = [1303.25/48.0 , 1504.05/48.0, 1568.1/48.0, 1568.1/48.0, 1012.94/48.0]
+height = [52400.0/48.0 , 63900/48.0, 64900/48.0, 64900/48.0, 46300/48.0]
 bars = ('SimpleABR', 'BOLA', 'BBA0', 'BBA2', 'Pensieve')
 y_pos = np.arange(len(bars))
 
