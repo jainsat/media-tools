@@ -135,8 +135,6 @@ class Client:
         lowQualIndex = config.getLowestBitRateIndex()
         return fetcher.fetch(config.reps[lowQualIndex], number)
 
-
-
 '''
 Download all the representations.
 '''
@@ -273,8 +271,6 @@ class BolaClient(Client):
         self.segment_time = self.config.reps[0]['dur_s']*1000
         self.Vp = (self.buffer_size - self.segment_time) / (self.utilities[-1] + self.gp)
         self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
-        #self.last_seek_index = 0 # TODO
-        #self.last_quality = 0
         if options.verbose:
             for q in range(len(self.bitrates)):
                 b = self.bitrates[q]
@@ -320,7 +316,7 @@ class BolaClient(Client):
            #if buffer is full
            bufferOverflow = self.player.get_buffer_level() + self.segment_time - self.buffer_size
            if bufferOverflow > 0:
-               print "bufferoverflow!!!!!!!!!!!"
+               print "bufferoverflow"
                self.player.deplete_buffer(self.config.reps[0]['dur_s'] * 1000)
 
            quality = self.quality_from_buffer()
@@ -591,7 +587,6 @@ class PensieveClient(Client):
         self.verbose = options.verbose
         self.segment_time = self.config.reps[0]['dur_s']*1000
         self.player = videoplayer.VideoPlayer(self.segment_time, self.utilities, self.bitrates)
-
         self.sess = tf.Session()
 
         self.actor = a3c.ActorNetwork(self.sess, state_dim=[S_INFO, S_LEN], action_dim=A_DIM, learning_rate=ACTOR_LR_RATE)
