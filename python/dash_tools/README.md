@@ -59,6 +59,24 @@ Next two lines contain two list values that can be copied to plots/plot1.py to g
 Next four lines specifies the utility values that can be used to generate the plots mentioned in plots/ path.<br/>
 plot_average_qoe.py, plot_bitrate.py, plot_rebuffer_penalty.py, plot_smooth.py<br/>
 
+# MPD file
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<MPD xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns="urn:mpeg:dash:schema:mpd:2011" xmlns:scte35="http://www.scte.org/schemas/35/2014SCTE35.xsd" xsi:schemaLocation="urn:mpeg:dash:schema:mpd:2011 DASH-MPD.xsd" profiles="urn:mpeg:dash:profile:isoff-live:2011" type="static" minBufferTime="PT5.000S" maxSegmentDuration="PT2.005S" availabilityStartTime="2016-01-20T21:10:02Z" mediaPresentationDuration="PT193.680S">
+    <Period id="period0" duration="PT193.680S">
+        <AdaptationSet mimeType="video/mp4" segmentAlignment="true" startWithSAP="1" maxWidth="1920" maxHeight="1080" maxFrameRate="30000/1001" par="1:1">
+            <SegmentTemplate timescale="90000" initialization="$RepresentationID$/Header.m4s" media="$RepresentationID$/$Number$.m4s" startNumber="1" duration="359408" presentationTimeOffset="0" />
+            <Representation id="video1" bandwidth="4300000" codecs="avc1.4D401E" width="1920" height="1080" frameRate="30000/1001" sar="1:1" scanType="progressive" />
+            <Representation id="video2" bandwidth="2850000" codecs="avc1.4D401E" width="1280" height="720" frameRate="30000/1001" sar="1:1" scanType="progressive" />
+            <Representation id="video3" bandwidth="1850000" codecs="avc1.4D401E" width="1024" height="576" frameRate="30000/1001" sar="1:1" scanType="progressive" />
+            <Representation id="video4" bandwidth="1200000" codecs="avc1.4D401E" width="768" height="432" frameRate="30000/1001" sar="1:1" scanType="progressive" />
+            <Representation id="video5" bandwidth="750000" codecs="avc1.4D401E" width="640" height="360" frameRate="30000/1001" sar="1:1" scanType="progressive" />
+            <Representation id="video6" bandwidth="300000" codecs="avc1.4D401E" width="320" height="180" frameRate="30000/1001" sar="1:1" scanType="progressive" />
+        </AdaptationSet>
+    </Period>
+</MPD>
+```
+
 # Code navigation
 staticdownloader.py - client code <br/>
 videoplayer.py - videoplayer code <br/>
@@ -68,4 +86,3 @@ server/3G_trace.json - 3G network trace file <br/>
 server/static/manifest.mpd - MPD file of 6 reps. Video segments can be found here- https://github.com/hongzimao/pensieve/tree/master/video_server <br/>
 plots/*.py - Plot graphs code <br/>
 trigger_bandwidth_changer.sh - Script to trigger simulate_nw_trace.py on the remote server. Change the IP here as per your requirements. <br/>
-
