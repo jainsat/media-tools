@@ -1,27 +1,23 @@
 # Adaptive Video Streaming Over Wireless Networks
 
-###############
-Platform info
-
+# Platform info
 Requirements -
 Python2/3, linux OS, node, npm
  
 Following packages/libraries should be installed -
-## tensor-flow
+tensor-flow -
 sudo apt-get -y install python-pip python-dev
 sudo pip install tensorflow
 
-## tflearn
+tflearn -
 sudo pip install tflearn
 sudo apt-get -y install python-h5py
 sudo apt-get -y install python-scipy
 
-## matplot lib
+matplot lib -
 sudo apt-get -y install python-matplotlib
 
-#############
-
-Steps to run
+# Steps to run
 Have two linux systems(either VM or physical machines). One acts as server and another as client.
 
 Server config -
@@ -66,8 +62,7 @@ Next two lines contain two list values that can be copied to plots/plot1.py to g
 Next four lines specifies the utility values that can be used to generate the plots mentioned in plots/ path.
 plot_average_qoe.py, plot_bitrate.py, plot_rebuffer_penalty.py, plot_smooth.py
 
-########
-Code navigation
+# Code navigation
 staticdownloader.py - client code
 videoplayer.py - videoplayer code
 server/server.js - server code
@@ -77,5 +72,3 @@ server/static/manifest.mpd - MPD file of 6 reps. Video segments can be found her
 plots/*.py - Plot graphs code
 trigger_bandwidth_changer.sh - Script to trigger simulate_nw_trace.py on the remote server. Change the IP here as per your requirements. 
 
-
-#######
