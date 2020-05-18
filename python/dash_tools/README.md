@@ -25,7 +25,7 @@ Video files can be downloaded from -  https://github.com/hongzimao/pensieve/tr
 
 Client - <br/>
 To run the client, use the staticdownloader.py. It takes the following args -<br/>
-__./staticdownloader.py [options] mpdURL [dstDir] __<br/>
+__./staticdownloader.py [options] mpdURL [dstDir]__.<br/>
 
 options - specifies the abr algo and verbosity. <br/>
 mpdURL - the url path where the mpd file is hosted at server. Eg. http://10.128.0.33:5000/manifest.mpd. <br/>
